@@ -1190,6 +1190,7 @@ function lockNav() {
   window._isLoggedIn = false;
   window._pageLoaded   = {};
   window._initQueueMap = {};
+  if (window.PageGate) window.PageGate.resetAll();
   window._treatmentInitialized = false;
   window._vaccinationInitialized = false;
   window._vrInitialized = false;
@@ -1280,10 +1281,15 @@ function unlockNav() {
       if (ov) ov.style.display = 'none';
       if (typeof vaccInit === 'function') return vaccInit();
     }},
-    { key: 'vaccinationRequests', fn: function () {
+{ key: 'vaccinationRequests', fn: function () {
       if (window._vrInitialized) return;
       window._vrInitialized = true;
       if (typeof vr_loadData === 'function') return vr_loadData();
+    }},
+    { key: 'samples', fn: function () {
+      if (window._samplesInitialized) return;
+      window._samplesInitialized = true;
+      if (typeof foinit === 'function') return foinit();
     }},
     { key: 'reports', fn: function () {
       if (window._pageLoaded.reports) return;
@@ -1367,28 +1373,182 @@ function unlockNav() {
 
   initQueue.forEach(function (it) { window._initQueueMap[it.key] = it.fn; });
 
-  (function runNext(i) {
+(function runNext(i) {
     if (!window._isLoggedIn) return;
     if (i >= initQueue.length) {
       console.log('[INIT] ✅ اكتمل تحميل جميع الصفحات');
       return;
     }
-    var item = initQueue[i], done = false;
-    var next = function () {
-      if (done) return;
-      done = true;
-      setTimeout(function () { runNext(i + 1); }, 500);
-    };
-    var res;
-    try { res = item.fn(); }
-    catch (e) { console.warn('[INIT] خطأ في ' + item.key + ':', e.message); }
-    if (res && typeof res.then === 'function') res.then(next, next);
-    else next();
+    var key  = initQueue[i].key;
+    var next = function () { setTimeout(function () { runNext(i + 1); }, 500); };
+    window.PageGate.load(key).then(next, function (e) {
+      console.warn('[INIT] ⚠️ فشل تحميل ' + key + ': ' + (e.message || e));
+      next();
+    });
   })(0);
 }
 // تأمين التنقل عند التحميل
 window._isLoggedIn = false;
 lockNav();
+
+/* ============================================================
+   PageGate — لا تُفتح الصفحة إلا بعد تأكيد تحميل بياناتها
+   ============================================================ */
+(function (global) {
+  "use strict";
+
+  var LABELS = {
+    breeder:'سجل المربي', treatment:'سجل العلاج', vaccination:'سجل التحصين',
+    vaccinationRequests:'طلبات التحصين', samples:'نموذج العينات',
+    reports:'الأدوية المصروفة', financialInventory:'المتحصلات اليومية',
+    diseaseTracking:'تتبع المرض', animalDistribution:'توزيع الحيوانات',
+    comprehensiveReport:'التقرير الشامل'
+  };
+
+  /* أعلام التهيئة — تُصفَّر عند الفشل ليعمل زر إعادة المحاولة */
+  var FLAG = {
+    breeder:'_breederInitialized', treatment:'_treatmentInitialized',
+    vaccination:'_vaccinationInitialized', vaccinationRequests:'_vrInitialized',
+    samples:'_samplesInitialized'
+  };
+
+  var PUBLIC   = ['login','home','settings','dashboard','doctorPerformance'];
+  var TIMEOUT  = 30000;
+  var state    = {};   /* pageId → ready | loading | error */
+  var pending  = {};
+  var _orig    = global.showPage;
+
+  function loaderFor(id) {
+    return (global._initQueueMap && global._initQueueMap[id]) || null;
+  }
+
+  function resetFlag(id) {
+    if (FLAG[id]) global[FLAG[id]] = false;
+    if (global._pageLoaded) delete global._pageLoaded[id];
+  }
+
+  /* ── شاشة الانتظار ── */
+  function box() {
+    var el = document.getElementById('pg_overlay');
+    if (el) return el;
+    el = document.createElement('div');
+    el.id = 'pg_overlay';
+    el.style.cssText =
+      'position:fixed;inset:0;background:rgba(255,255,255,.97);z-index:99990;' +
+      'display:none;align-items:center;justify-content:center;direction:rtl;' +
+      'font-family:Tahoma,Arial,sans-serif;';
+    el.innerHTML =
+      '<div style="text-align:center;max-width:440px;padding:26px 34px;background:#fff;' +
+      'border:3px solid #00b8d9;border-radius:14px;box-shadow:0 10px 34px rgba(0,0,0,.18);">' +
+        '<div id="pg_spin" style="width:58px;height:58px;border:6px solid #e0e0e0;' +
+        'border-top:6px solid #00b8d9;border-radius:50%;animation:spin 1s linear infinite;' +
+        'margin:0 auto 16px;"></div>' +
+        '<div id="pg_icon" style="font-size:44px;margin-bottom:10px;display:none;">⚠️</div>' +
+        '<div id="pg_title" style="font-size:16px;font-weight:bold;color:#00b8d9;margin-bottom:8px;"></div>' +
+        '<div id="pg_sub" style="font-size:12.5px;color:#666;line-height:1.9;"></div>' +
+        '<div id="pg_btns" style="margin-top:18px;display:none;gap:10px;justify-content:center;"></div>' +
+      '</div>';
+    document.body.appendChild(el);
+    return el;
+  }
+
+  function showLoading(id) {
+    var el = box();
+    el.style.display = 'flex';
+    document.getElementById('pg_spin').style.display = 'block';
+    document.getElementById('pg_icon').style.display = 'none';
+    document.getElementById('pg_btns').style.display = 'none';
+    document.getElementById('pg_title').style.color  = '#00b8d9';
+    document.getElementById('pg_title').textContent  = '⏳ جاري تحميل ' + (LABELS[id] || id);
+    document.getElementById('pg_sub').textContent    =
+      'يتم جلب القوائم والجداول — لن تُفتح الصفحة قبل اكتمال البيانات';
+  }
+
+  function showError(id, msg) {
+    var el = box();
+    el.style.display = 'flex';
+    document.getElementById('pg_spin').style.display = 'none';
+    document.getElementById('pg_icon').style.display = 'block';
+    document.getElementById('pg_title').style.color  = '#e65050';
+    document.getElementById('pg_title').textContent  = 'تعذّر تحميل ' + (LABELS[id] || id);
+    document.getElementById('pg_sub').textContent    = msg || 'خطأ غير معروف';
+
+    var btns = document.getElementById('pg_btns');
+    btns.style.display = 'flex';
+    btns.innerHTML =
+      '<button id="pg_retry" style="background:#00b8d9;color:#fff;border:none;border-radius:7px;' +
+      'padding:9px 26px;font-weight:bold;cursor:pointer;font-family:inherit;font-size:13px;">🔄 إعادة المحاولة</button>' +
+      '<button id="pg_skip" style="background:#95a5a6;color:#fff;border:none;border-radius:7px;' +
+      'padding:9px 26px;font-weight:bold;cursor:pointer;font-family:inherit;font-size:13px;">فتح بدون بيانات</button>';
+
+    document.getElementById('pg_retry').onclick = function () {
+      resetFlag(id); state[id] = null; global.showPage(id);
+    };
+    document.getElementById('pg_skip').onclick = function () {
+      hide(); _orig.call(global, id);
+    };
+  }
+
+  function hide() {
+    var el = document.getElementById('pg_overlay');
+    if (el) el.style.display = 'none';
+  }
+
+  /* ── تنفيذ التحميل ── */
+  function load(id) {
+    if (state[id] === 'ready') return Promise.resolve(true);
+    if (pending[id])            return pending[id];
+
+    var fn = loaderFor(id);
+    if (!fn) { state[id] = 'ready'; return Promise.resolve(true); }
+
+    state[id] = 'loading';
+    var pr = new Promise(function (resolve, reject) {
+      var done = false;
+      var timer = setTimeout(function () {
+        if (!done) { done = true; reject(new Error('انتهت المهلة (30 ثانية) — الخادم لم يستجب')); }
+      }, TIMEOUT);
+
+      Promise.resolve().then(fn).then(function () {
+        if (done) return; done = true; clearTimeout(timer); resolve(true);
+      }, function (e) {
+        if (done) return; done = true; clearTimeout(timer); reject(e);
+      });
+    });
+
+    pending[id] = pr.then(function () {
+      state[id] = 'ready'; delete pending[id]; return true;
+    }, function (e) {
+      state[id] = 'error'; delete pending[id]; resetFlag(id); throw e;
+    });
+
+    return pending[id];
+  }
+
+  global.PageGate = {
+    load: load,
+    isReady: function (id) { return state[id] === 'ready'; },
+    resetAll: function () { state = {}; pending = {}; hide(); }
+  };
+
+  /* ── اعتراض showPage ── */
+  global.showPage = function (pageId) {
+    var args = arguments;
+    if (PUBLIC.indexOf(pageId) !== -1 || state[pageId] === 'ready' || !loaderFor(pageId)) {
+      hide();
+      return _orig.apply(global, args);
+    }
+    showLoading(pageId);
+    load(pageId).then(function () {
+      hide();
+      _orig.apply(global, args);
+    }, function (err) {
+      showError(pageId, err.message || String(err));
+    });
+  };
+  global.showPage._pageGate = true;
+
+})(window);
 </script>
 
 <!-- الصفحات -->
