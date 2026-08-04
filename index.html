@@ -874,6 +874,11 @@ input, select, textarea {
 </head>
 <body>
 <script>
+  /* ===== الرابط الموحّد لجميع الصفحات ===== */
+window.UNIFIED_API_URL = "https://script.google.com/macros/s/AKfycbzN0d0fPRzmfhaxKLbZnK0WAIKlLam0bZEUrJPUnEKOYQvsPXVA7-db7sQw9sWJhR7k/exec";
+window._activeApiUrl   = window.UNIFIED_API_URL;
+</script>
+<script>
 (function() {
   var container = document.createElement('div');
   container.id  = 'toastContainer';
@@ -1364,358 +1369,6 @@ lockNav();
 
 <!-- الصفحات -->
 <div id="home" class="page">
-  <!-- ===== قسم اختيار الولاية ===== -->
-<div style="padding:15px 0 5px 0;">
-  <div style="background:#f8ffff;border:3px solid #00b8d9;border-radius:8px;padding:15px;max-width:420px;">
-    
-    <div style="font-size:15px;font-weight:bold;color:#004e66;margin-bottom:12px;">
-      🗺️ اختيار الولاية
-    </div>
-
-    <label style="font-size:13px;font-weight:bold;color:#004e66;display:block;margin-bottom:6px;">
-      اختر الولاية :
-    </label>
-
-    <select id="wilayatSelect"
-      style="width:100%;padding:8px 10px;border:2px solid #ddd;border-radius:5px;
-             font-size:14px;font-family:inherit;margin-bottom:12px;color:#333;">
-      <option value="">— اختر الولاية —</option>
-      <option value="https://script.google.com/macros/s/AKfycbywu3iD-C4C2hJ2-_OR8KkfWde6jDH6FS9XoRjUx9knDs5wur9ny76th_gJNdxs7H1k1A/exec">شناص</option>
-      <option value="https://script.google.com/macros/s/AKfycbzEUVgUVBiK3diev7vq-pYQ51zB-Ujq88f_xdAKGX2PXUzE1Io3FZEaWPi3xHUF5ckXGg/exec">لوى</option>
-      <option value="https://script.google.com/macros/s/AKfycbyz2zN7GFcvLTRBa7r2qbu8B1Q8i9EQdmOwwxRGCWzJrxPZp2h3b6f5jpNLcq-Mfc9q/exec">صحم</option>
-      <option value="https://script.google.com/macros/s/AKfycbya25-eO1duXpG-KagtlH5DSwlNQ7xy__znjQAbPZwLLSeWQfkTtd_AjQCpucSO6gKG/exec">صحار</option>
-      <option value="https://script.google.com/macros/s/AKfycbwnCUYiFL6j9yenFS6jmA9Dqktha6nyb-vKGtWKHpopFy6TtU8IQjdgTfCi7dcUMy1q/exec">الخابورة</option>
-      <option value="https://script.google.com/macros/s/AKfycbyYcOAj-NeT18g_f4TZ4SsZK-7YCFHWDHRu0FZPfoqOKpfawx3jTqiBXTA5Xoq_w_YL/exec">السويق</option>
-       <option value="https://script.google.com/macros/s/AKfycbzCHdhVnEJU5nq-OYZXTH_wLo-wDfx8pzsIYRosMaWyUsE1mepgAyonUAZ85rqp0i4S/exec">دائرة الثروة الحيوانية</option>
-    </select>
-
-    <button id="wilayatApplyBtn" onclick="wilayatApply()"
-      style="width:100%;padding:10px;background:#2bb673;color:#fff;border:none;
-             border-radius:5px;font-size:14px;font-weight:bold;font-family:inherit;cursor:pointer;">
-      ✅ تطبيق الولاية
-    </button>
-
-    <div id="wilayatStatus" style="margin-top:10px;font-size:13px;font-weight:bold;
-         text-align:center;display:none;"></div>
-  </div>
-</div>
-
-<script>
-// تحميل الولاية المحفوظة عند فتح الصفحة
-(function() {
-  var saved = localStorage.getItem('selected_wilayat_url');
-  var savedName = localStorage.getItem('selected_wilayat_name');
-  if (saved) {
-    // تطبيق الرابط المحفوظ على كل متغيرات التطبيق
-    wilayatSetAllUrls(saved);
-    var status = document.getElementById('wilayatStatus');
-    if (status) {
-      status.style.display = 'block';
-      status.style.color = '#2bb673';
-      status.textContent = '✅ الولاية الحالية: ' + (savedName || saved);
-    }
-    // تعيين القيمة في القائمة
-    var sel = document.getElementById('wilayatSelect');
-    if (sel) sel.value = saved;
-  }
-})();
-
-function wilayatSetAllUrls(url) {
-  window._activeApiUrl      = url;
-  window.TR_API_URL         = url;
-  window.bd_API_URL         = url;
-  window.VACC_API_URL       = url;
-  window.SAMPLES_API_URL    = url;
-  window.SETTINGS__URL      = url;
-  window.DB__URL            = url;
-  window.VR_API_URL         = url;
-  window.dim_SERVICE_URL    = url;
-  window.fin_SERVICE_URL    = url;
-  window.dtr_SERVICE_URL    = url;
-  window.ani_SERVICE_URL    = url;
-  window.rpt_SERVICE_URL    = url;
-  window.REMOTE_SYNC_URL    = url;
-  // تحديث المتغيرات المحلية داخل السكريبتات مباشرة
-  try { fin_SERVICE_URL  = url; } catch(e) {}
-  try { dtr_SERVICE_URL  = url; } catch(e) {}
-  try { ani_SERVICE_URL  = url; } catch(e) {}
-  try { rpt_SERVICE_URL  = url; } catch(e) {}
-  try { SETTINGS__URL    = url; } catch(e) {}
-  try { DB__URL          = url; } catch(e) {}
-  try { dim_SERVICE_URL  = url; } catch(e) {}
-  try { REMOTE_SYNC_URL  = url; } catch(e) {}
-  try { TR_API_URL       = url; } catch(e) {}
-  try { bd_API_URL       = url; } catch(e) {}
-  try { VACC_API_URL     = url; } catch(e) {}
-  try { SAMPLES_API_URL  = url; } catch(e) {}
-  try { VR_API_URL       = url; } catch(e) {}
-}
-
-async function wilayatApply() {
-  var sel = document.getElementById('wilayatSelect');
-  var status = document.getElementById('wilayatStatus');
-
-  if (!sel.value) {
-    showToast('الرجاء اختيار ولاية أولاً', 'warning');
-    return;
-  }
-
-  var name = sel.options[sel.selectedIndex].text;
-  var url  = sel.value;
-
-  // تطبيق الرابط على كل متغيرات التطبيق
-  wilayatSetAllUrls(url);
-
-  // حفظ الاختيار في localStorage
-  localStorage.setItem('selected_wilayat_url', url);
-  localStorage.setItem('selected_wilayat_name', name);
-
-  // ===== إظهار شاشة الانتظار =====
-  var loadingOverlay = document.createElement('div');
-  loadingOverlay.id = 'wilayatLoadingOverlay';
-  loadingOverlay.style.cssText = `
-    position:fixed;inset:0;background:rgba(255,255,255,0.97);
-    display:flex;flex-direction:column;align-items:center;justify-content:center;
-    z-index:99999;font-family:Tahoma,Arial,sans-serif;direction:rtl;
-  `;
-  loadingOverlay.innerHTML = `
-    <div style="text-align:center;">
-      <div style="width:70px;height:70px;border:7px solid #e0e0e0;
-           border-top:7px solid #00b8d9;border-radius:50%;
-           animation:spin 1s linear infinite;margin:0 auto 20px;"></div>
-      <div style="font-size:20px;font-weight:bold;color:#00b8d9;margin-bottom:10px;">
-        ⏳ جاري تحميل ملفات ولاية ${name}
-      </div>
-      <div id="wilayatLoadingStep" style="font-size:14px;color:#666;margin-bottom:20px;">
-        جاري الاتصال بالخادم...
-      </div>
-      <div style="width:300px;height:10px;background:#e0e0e0;border-radius:20px;overflow:hidden;">
-        <div id="wilayatProgressBar" style="height:100%;width:0%;background:#00b8d9;
-             border-radius:20px;transition:width 0.4s ease;"></div>
-      </div>
-      <div id="wilayatProgressText" style="font-size:13px;color:#00b8d9;
-           margin-top:8px;font-weight:bold;">0%</div>
-    </div>
-  `;
-  document.body.appendChild(loadingOverlay);
-
-  function setStep(msg, percent) {
-    var stepEl = document.getElementById('wilayatLoadingStep');
-    var barEl  = document.getElementById('wilayatProgressBar');
-    var pctEl  = document.getElementById('wilayatProgressText');
-    if (stepEl) stepEl.textContent = msg;
-    if (barEl)  barEl.style.width  = percent + '%';
-    if (pctEl)  pctEl.textContent  = percent + '%';
-  }
-
-  try {
-    // خطوة 1 — أرقام الهاتف
-    setStep('جاري تحميل أرقام الهواتف...', 15);
-    await Promise.allSettled([
-      (async function() {
-        if (typeof trcallApi === 'function') {
-          var r = await trcallApi('trgetPhoneNumbers');
-          if (r.success) {
-            var dl = document.getElementById('tr_phoneList');
-            if (dl) { dl.innerHTML=''; (r.data||[]).sort().forEach(function(v){var o=document.createElement('option');o.value=v;dl.appendChild(o);}); }
-          }
-        }
-      })(),
-      (async function() {
-        if (typeof vaccCallApi === 'function') {
-          var r = await vaccCallApi('getPhoneNumbers');
-          if (r.success) {
-            var dl = document.getElementById('vacc_phoneList');
-            if (dl) { dl.innerHTML=''; (r.data||[]).sort().forEach(function(v){var o=document.createElement('option');o.value=v;dl.appendChild(o);}); }
-          }
-        }
-      })(),
-      (async function() {
-        if (typeof focallApi === 'function') {
-          var r = await focallApi('fogetPhoneNumbers');
-          if (r.success) {
-            var dl = document.getElementById('phoneList');
-            if (dl) { dl.innerHTML=''; (r.data||[]).sort().forEach(function(v){var o=document.createElement('option');o.value=v;dl.appendChild(o);}); }
-          }
-        }
-      })(),
-      (async function() {
-        if (typeof bd_callApi === 'function') {
-          var r = await bd_callApi('bd_getPhoneNumbers');
-          if (r.success) {
-            var dl = document.getElementById('bd_phoneList');
-            if (dl) { dl.innerHTML=''; (r.data||[]).sort().forEach(function(v){var o=document.createElement('option');o.value=v;dl.appendChild(o);}); }
-          }
-        }
-      })()
-    ]);
-
-    // خطوة 2 — مدخلو البيانات
-    setStep('جاري تحميل قوائم مدخلي البيانات...', 35);
-    await Promise.allSettled([
-      (async function() {
-        if (typeof trcallApi === 'function') {
-          var r = await trcallApi('trgetDataEntryOptions');
-          if (r.success) {
-            ['tr_dataEntryList','tr_dataUpdaterList'].forEach(function(id){
-              var dl=document.getElementById(id);
-              if(dl){dl.innerHTML='';(r.data||[]).sort().forEach(function(v){var o=document.createElement('option');o.value=v;dl.appendChild(o);});}
-            });
-          }
-        }
-      })(),
-      (async function() {
-        if (typeof bd_callApi === 'function') {
-          var r = await bd_callApi('bd_getDataEntryOptions');
-          if (r.success) {
-            ['bd_dataEntryList','bd_dataUpdaterList'].forEach(function(id){
-              var dl=document.getElementById(id);
-              if(dl){dl.innerHTML='';(r.data||[]).sort().forEach(function(v){var o=document.createElement('option');o.value=v;dl.appendChild(o);});}
-            });
-          }
-        }
-      })(),
-      (async function() {
-        if (typeof vaccCallApi === 'function') {
-          var r = await vaccCallApi('getDataEntryOptions');
-          if (r.success) {
-            ['vacc_dataEntryList','vacc_dataUpdaterList'].forEach(function(id){
-              var dl=document.getElementById(id);
-              if(dl){dl.innerHTML='';(r.data||[]).sort().forEach(function(v){var o=document.createElement('option');o.value=v;dl.appendChild(o);});}
-            });
-          }
-        }
-      })(),
-      (async function() {
-        if (typeof focallApi === 'function') {
-          var r = await focallApi('fogetDataEntryOptions');
-          if (r.success) {
-            ['dataEntryList','dataUpdaterList'].forEach(function(id){
-              var dl=document.getElementById(id);
-              if(dl){dl.innerHTML='';(r.data||[]).sort().forEach(function(v){var o=document.createElement('option');o.value=v;dl.appendChild(o);});}
-            });
-          }
-        }
-      })()
-    ]);
-
-    // خطوة 3 — الأمراض والأدوية
-    setStep('جاري تحميل قوائم الأمراض والأدوية...', 55);
-    await Promise.allSettled([
-      (async function() {
-        if (typeof trcallApi === 'function') {
-          var r1 = await trcallApi('trgetDiseases');
-          if (r1.success) {
-            var dl=document.getElementById('tr_diseaseList');
-            if(dl){dl.innerHTML='';(r1.data||[]).sort().forEach(function(v){var o=document.createElement('option');o.value=v;dl.appendChild(o);});}
-          }
-          var r2 = await trcallApi('trgetDrugs');
-          if (r2.success) {
-            var dl2=document.getElementById('tr_drugList');
-            if(dl2){dl2.innerHTML='';(r2.data||[]).sort().forEach(function(v){var o=document.createElement('option');o.value=v;dl2.appendChild(o);});}
-          }
-        }
-      })()
-    ]);
-
-    // خطوة 4 — السجل اليومي للعلاج
-    setStep('جاري تحميل السجل اليومي...', 70);
-    await Promise.allSettled([
-      (async function() {
-        if (typeof trloadData === 'function') await trloadData();
-      })(),
-      (async function() {
-        if (typeof trloadIncompleteCount === 'function') await trloadIncompleteCount();
-      })()
-    ]);
-
-    // خطوة 5 — المناطق
-    setStep('جاري تحميل قوائم المناطق...', 82);
-    await Promise.allSettled([
-      (async function() {
-        if (typeof bd_callApi === 'function') {
-          var r = await bd_callApi('bd_getRegionOptions');
-          if (r.success) {
-            var dl=document.getElementById('bd_regionList');
-            if(dl){dl.innerHTML='';(r.data||[]).sort().forEach(function(v){var o=document.createElement('option');o.value=v;dl.appendChild(o);});}
-          }
-        }
-      })()
-    ]);
-
-    // خطوة 6 — العينات والفحوصات
-    setStep('جاري تحميل قوائم العينات...', 92);
-    await Promise.allSettled([
-      (async function() {
-        if (typeof focallApi === 'function') {
-          var r1 = await focallApi('fogetTestOptions');
-          if (r1.success) {
-            var dl=document.getElementById('testList');
-            if(dl){dl.innerHTML='';(r1.data||[]).sort().forEach(function(v){var o=document.createElement('option');o.value=v;dl.appendChild(o);});}
-          }
-          var r2 = await focallApi('fogetSampleTypeOptions');
-          if (r2.success) {
-            var dl2=document.getElementById('sampleTypeList');
-            if(dl2){dl2.innerHTML='';(r2.data||[]).sort().forEach(function(v){var o=document.createElement('option');o.value=v;dl2.appendChild(o);});}
-          }
-          var r3 = await focallApi('fogetUniquePhoneCount');
-          if (r3.success || r3.count !== undefined) {
-            var uc=document.getElementById('uniqueCountDisplay');
-            var ls=document.getElementById('lastSampleDisplay');
-            if(uc) uc.textContent = r3.count || 0;
-            if(ls) ls.textContent = r3.lastSample || '—';
-          }
-        }
-      })()
-    ]);
-
-    // اكتمل
-    setStep('✅ تم تحميل جميع البيانات بنجاح!', 100);
-    await new Promise(function(r){ setTimeout(r, 700); });
-
-  } catch(err) {
-    setStep('⚠️ تم التحميل مع بعض الأخطاء', 100);
-    await new Promise(function(r){ setTimeout(r, 800); });
-  }
-
-  // إخفاء شاشة الانتظار
-  loadingOverlay.style.transition = 'opacity 0.4s ease';
-  loadingOverlay.style.opacity = '0';
-  setTimeout(function() {
-    if (loadingOverlay.parentNode) loadingOverlay.remove();
-  }, 400);
-
-  // إظهار رسالة النجاح
-  status.style.display = 'block';
-  status.style.color = '#2bb673';
-  status.textContent = '✅ الولاية الحالية: ' + name;
-
-showToast('✅ تم تحميل ولاية ' + name + ' بنجاح', 'success');
-
-  // إعادة تهيئة جميع الصفحات بالرابط الجديد
-  window._treatmentInitialized    = false;
-  window._vaccinationInitialized  = false;
-  window._vrInitialized           = false;
-  window._breederInitialized      = false;
-  window._samplesInitialized      = false;
-  if (typeof bd_clearForm === 'function') bd_clearForm();
-  if (window.BreederCache && window.BreederCache._doClear) window.BreederCache._doClear();
-   resetAllPagesData();
-  // إعادة تحميل الصفحات التي لا تحتاج init
-  vr_allData    = [];
-  vr_dataLoaded = false;
-
-  if (typeof trloadData          === 'function') trloadData();
-  if (typeof trloadIncompleteCount === 'function') trloadIncompleteCount();
-  if (typeof vr_loadData         === 'function') vr_loadData();
-  if (typeof ani_loadData        === 'function') ani_loadData();
-  if (typeof dim_loadData        === 'function') dim_loadData();
-  if (typeof rpt_loadReport      === 'function') rpt_loadReport();
-  if (typeof dtr_loadData        === 'function') dtr_loadData();
- if (typeof fin_loadFinancialData === 'function') fin_loadFinancialData();
-
-}
-</script>
   <!-- زر المظهر مستقل عن نظام التبويبات -->
   <div style="padding:15px 0;">
     <button 
@@ -2325,14 +1978,9 @@ if(m){
   lCU={...m, _u:u};
   window._currentUser = u;
 
-  // ===== قراءة رابط الولاية من الشيت =====
-  const urlKey = Object.keys(m).find(k => k.toLowerCase().trim() === 'api_url');
-  if (urlKey && m[urlKey] && m[urlKey].trim() !== '') {
-    window._activeApiUrl = m[urlKey].trim();
-    console.log('[API] رابط الولاية:', m['wilayat'] || '—');
-  }
-  // =========================================
-
+// ===== رابط موحّد ثابت =====
+  window._activeApiUrl = window.UNIFIED_API_URL;
+  // ===========================
 PERM.init(u, m);
 
   // ===== تهيئة الصفحات بعد تسجيل الدخول =====
@@ -2409,9 +2057,9 @@ PERM.init(u, m);
 document.getElementById('l_logoutBtn').addEventListener('click', ()=>{
   PERM.revoke();
   
-  window._currentUser = null;
+window._currentUser = null;
   window._userAllowedPages = null;
-  window._activeApiUrl = null;
+  window._activeApiUrl = window.UNIFIED_API_URL;
   lCU=null;
   document.getElementById('l_username').value='';
   document.getElementById('l_password').value='';
@@ -2419,14 +2067,6 @@ document.getElementById('l_logoutBtn').addEventListener('click', ()=>{
   if (typeof bd_clearForm === 'function') bd_clearForm();
   lShow(lViews.login);
   lockNav();
-
-  // إعادة ضبط اختيار الولاية
-  var sel = document.getElementById('wilayatSelect');
-  if (sel) sel.value = '';
-  var status = document.getElementById('wilayatStatus');
-  if (status) { status.style.display = 'none'; status.textContent = ''; }
-  localStorage.removeItem('selected_wilayat_url');
-  localStorage.removeItem('selected_wilayat_name');
 
   showPage('login');
 });
@@ -3449,8 +3089,8 @@ function dim_printTable() {
 //  الإعدادات العامة
 // ============================================================
 
-var TR_API_URL = "";
-// ============================================================
+var TR_API_URL = window._activeApiUrl || "";
+  // ============================================================
 //  الحالة العامة (State)
 // ============================================================
 
@@ -5013,7 +4653,7 @@ async function trSelectIncompleteCase(caseNumber) {
 <script>
 "use strict";
 
-var bd_API_URL = "";
+var bd_API_URL = window._activeApiUrl || "";
 var bd_isClearing = false;
 async function bd_callApi(action, payload) {
   var url = window._activeApiUrl || bd_API_URL;
@@ -10411,12 +10051,7 @@ function foDismissOverdueAlert() {
     reports: [
       { selector: "#reports .print-btn", action: "print" },
     ],
-    financialInventory: [
-      { id: "wilayatApplyBtn", action: "apply" },
-    ],
-     home: [
-    { selector: "#home .wilayatApply", action: "wilsave" },
-  ],
+
   };
 
   /* ─────────────────────────────────────────────────────
@@ -10991,7 +10626,8 @@ function showUserBadge(name, role) {
 // يعتمد على Polling للـ Google Apps Script
 // ─────────────────────────────────────────────────────
 
-var REMOTE_SYNC_URL = window._activeApiUrl || "";var REMOTE_SYNC_INTERVAL = 15000; // كل 15 ثانية
+var REMOTE_SYNC_URL = window.UNIFIED_API_URL;
+  var REMOTE_SYNC_INTERVAL = 15000; // كل 15 ثانية
 var REMOTE_SYNC_LAST_TS  = Date.now(); // نتتبع آخر وقت تحديث
 var remoteSyncTimer = null;
 
@@ -13025,11 +12661,6 @@ function sendTelegram(text) {
   }
   tryPatch();
 })();
-  // مسح الولاية عند تحديث الصفحة
-window.addEventListener('beforeunload', function() {
-  localStorage.removeItem('selected_wilayat_url');
-  localStorage.removeItem('selected_wilayat_name');
-});
 </script>
 </body>
 </html>
