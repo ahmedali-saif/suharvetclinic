@@ -1299,6 +1299,25 @@ function unlockNav() {
   showPage(defaultPage);
   console.log('[unlockNav] ✅ تم تسجيل الدخول وعرض الصفحة: ' + defaultPage);
 }
+  // ============================================================
+//  resetAllPagesData — إعادة تعيين أعلام التحميل عند الخروج
+// ============================================================
+function resetAllPagesData() {
+  // إعادة تعيين أعلام التحميل لكل صفحة
+  window._breederLoaded = false;
+  window._treatmentLoaded = false;
+  window._vaccinationLoaded = false;
+  window._vrLoaded = false;
+  window._samplesLoaded = false;
+  window._reportsLoaded = false;
+  window._comprehensiveReportLoaded = false;
+  window._financialInventoryLoaded = false;
+  window._diseaseTrackingLoaded = false;
+  window._animalDistributionLoaded = false;
+  window._doctorPerformanceLoaded = false;
+
+  console.log('[resetAllPagesData] ✅ تم إعادة تعيين أعلام التحميل');
+}
 // تأمين التنقل عند التحميل
 window._isLoggedIn = false;
 lockNav();
