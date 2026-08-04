@@ -1030,11 +1030,7 @@ function showPage(pageId) {
     showToast('يرجى تسجيل الدخول أولاً', 'warning');
     return;
   }
-    // منع فتح أي صفحة قبل اكتمال التحميل الأولي
-  if (window._bootRunning && publicPages.indexOf(pageId) === -1) {
-    showToast('⏳ جاري تحميل بيانات النظام، انتظر قليلاً', 'info');
-    return;
-  }
+  
   // التحقق من الصلاحيات
   if (window._isLoggedIn && window._userAllowedPages && publicPages.indexOf(pageId) === -1) {
     if (window._userAllowedPages.indexOf(pageId.toLowerCase()) === -1 && pageId !== 'home') {
@@ -1191,276 +1187,6 @@ function showPage(pageId) {
   // إعادة تعيين الكاش
   
   console.log('[resetAllPagesData] ✅ تم مسح جميع بيانات الصفحات');
-}
-
-// ============================================================
-//  Boot — التحميل الأولي التسلسلي بعد تسجيل الدخول
-// ============================================================
-function bootShowOverlay() {
-  var old = document.getElementById('bootLoadingOverlay');
-  if (old) old.remove();
-  var ov = document.createElement('div');
-  ov.id = 'bootLoadingOverlay';
-  ov.style.cssText = 'position:fixed;inset:0;background:rgba(255,255,255,0.98);display:flex;' +
-    'align-items:center;justify-content:center;z-index:99999;font-family:Tahoma,Arial,sans-serif;direction:rtl;';
-  ov.innerHTML =
-    '<div style="text-align:center;max-width:440px;">' +
-      '<div id="bootSpinner" style="width:70px;height:70px;border:7px solid #e0e0e0;' +
-      'border-top:7px solid #00b8d9;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 20px;"></div>' +
-      '<div style="font-size:19px;font-weight:bold;color:#00b8d9;margin-bottom:10px;">⏳ جاري تجهيز النظام</div>' +
-      '<div id="bootStep" style="font-size:14px;color:#666;margin-bottom:18px;min-height:22px;">جاري الاتصال بالخادم...</div>' +
-      '<div style="width:320px;height:10px;background:#e0e0e0;border-radius:20px;overflow:hidden;margin:0 auto;">' +
-        '<div id="bootBar" style="height:100%;width:0%;background:#00b8d9;border-radius:20px;transition:width .4s ease;"></div>' +
-      '</div>' +
-      '<div id="bootPct" style="font-size:13px;color:#00b8d9;margin-top:8px;font-weight:bold;">0%</div>' +
-      '<div id="bootError" style="display:none;margin-top:18px;background:#fdecea;border:1px solid #f5c6c1;' +
-      'border-radius:8px;padding:12px 14px;font-size:13px;color:#7a0000;text-align:right;line-height:1.9;"></div>' +
-      '<div id="bootActions" style="display:none;margin-top:14px;gap:10px;justify-content:center;">' +
-        '<button id="bootRetryBtn" style="background:#00b8d9;color:#fff;border:none;border-radius:6px;' +
-        'padding:9px 24px;font-weight:bold;cursor:pointer;font-family:inherit;font-size:13px;">🔄 إعادة المحاولة</button>' +
-        '<button id="bootSkipBtn" style="background:#95a5a6;color:#fff;border:none;border-radius:6px;' +
-        'padding:9px 24px;font-weight:bold;cursor:pointer;font-family:inherit;font-size:13px;">متابعة رغم ذلك</button>' +
-      '</div>' +
-    '</div>';
-  document.body.appendChild(ov);
-  return {
-    set: function (pct, msg) {
-      var s = document.getElementById('bootStep');
-      var b = document.getElementById('bootBar');
-      var p = document.getElementById('bootPct');
-      if (s && msg) s.textContent = msg;
-      if (b) b.style.width = pct + '%';
-      if (p) p.textContent = pct + '%';
-    },
-    fail: function (list, onRetry, onSkip) {
-      var sp = document.getElementById('bootSpinner');
-      if (sp) sp.style.display = 'none';
-      var e = document.getElementById('bootError');
-      if (e) {
-        e.style.display = 'block';
-        e.innerHTML = '⚠️ تعذّر تحميل البيانات التالية:<br>• ' + list.join('<br>• ');
-      }
-      var a = document.getElementById('bootActions');
-      if (a) a.style.display = 'flex';
-      var rb = document.getElementById('bootRetryBtn');
-      var sb = document.getElementById('bootSkipBtn');
-      if (rb) rb.onclick = onRetry;
-      if (sb) sb.onclick = onSkip;
-    },
-    close: function () {
-      ov.style.transition = 'opacity .4s ease';
-      ov.style.opacity = '0';
-      setTimeout(function () { if (ov.parentNode) ov.remove(); }, 400);
-    }
-  };
-}
-
-function bootListCount(id) {
-  var dl = document.getElementById(id);
-  return dl ? dl.querySelectorAll('option').length : 0;
-}
-
-async function bootRetry(fn, tries) {
-  tries = tries || 2;
-  var lastErr = null;
-  for (var i = 0; i < tries; i++) {
-    try { return await fn(); }
-    catch (err) {
-      lastErr = err;
-      await new Promise(function (r) { setTimeout(r, 800 * (i + 1)); });
-    }
-  }
-  throw lastErr || new Error('فشل غير معروف');
-}
-
-function bootBindOnce() {
-  if (window._bootListenersBound) return;
-  window._bootListenersBound = true;
-
-  var ds = document.getElementById('dtr_diseaseSelect');
-  if (ds) ds.addEventListener('change', function () {
-    if (typeof dtr_loadData === 'function') { window.dtr_userClick = true; dtr_loadData(); }
-  });
-
-  var af = document.getElementById('ani_dateFrom');
-  var at = document.getElementById('ani_dateTo');
-  if (af) af.addEventListener('change', function () {
-    var to = (document.getElementById('ani_dateTo') || {}).value;
-    if (!to) return;
-    if (this.value > to) {
-      showToast('⚠️ تاريخ البداية يجب أن يكون أصغر من تاريخ النهاية', 'warning');
-      this.value = ''; return;
-    }
-    if (typeof ani_loadData === 'function') ani_loadData();
-  });
-  if (at) at.addEventListener('change', function () {
-    var from = (document.getElementById('ani_dateFrom') || {}).value;
-    if (!from) { showToast('⚠️ الرجاء إدخال تاريخ البداية أولاً', 'warning'); this.value = ''; return; }
-    if (from > this.value) {
-      showToast('⚠️ تاريخ البداية يجب أن يكون أصغر من تاريخ النهاية', 'warning');
-      this.value = ''; return;
-    }
-    if (typeof ani_loadData === 'function') ani_loadData();
-  });
-}
-
-async function bootLoadAll() {
-  if (window._bootRunning) return;
-  window._bootRunning = true;
-
-  var ov = bootShowOverlay();
-
-  function finish(msg, type) {
-    window._bootRunning = false;
-    ov.close();
-    if (msg) showToast(msg, type || 'success');
-  }
-
-  if (!window._activeApiUrl) {
-    ov.set(0, 'رابط الخدمة غير معرّف');
-    ov.fail(['رابط الخدمة (api_url) غير معرّف لهذا المستخدم'],
-      function () { window._bootRunning = false; ov.close(); },
-      function () { window._bootRunning = false; ov.close(); });
-    return;
-  }
-
-  var steps = [
-    {
-      name: 'سجل المربي', pct: 18, msg: 'جاري تحميل سجل المربي...',
-      fn: async function () {
-        if (window._breederInitialized) {
-          if (typeof bd_refreshDropdowns === 'function') await bd_refreshDropdowns();
-          return;
-        }
-        window._breederInitialized = true;
-        window.bd_API_URL = window._activeApiUrl;
-        if (typeof bd_init === 'function') await bd_init();
-      },
-      check: function () { return bootListCount('bd_phoneList') > 0; }
-    },
-    {
-      name: 'سجل العلاج', pct: 38, msg: 'جاري تحميل سجل العلاج والقوائم...',
-      fn: async function () {
-        if (window._treatmentInitialized) {
-          if (typeof trloadDropdowns === 'function') await trloadDropdowns();
-          return;
-        }
-        window._treatmentInitialized = true;
-        window.TR_API_URL = window._activeApiUrl;
-        if (typeof trinit === 'function') await trinit();
-      },
-      check: function () {
-        return bootListCount('tr_phoneList') > 0 &&
-               bootListCount('tr_diseaseList') > 0 &&
-               bootListCount('tr_drugList') > 0 &&
-               bootListCount('tr_dataEntryList') > 0;
-      }
-    },
-    {
-      name: 'سجل التحصين', pct: 55, msg: 'جاري تحميل سجل التحصين...',
-      fn: async function () {
-        if (window._vaccinationInitialized) {
-          if (typeof vaccLoadDropdowns === 'function') await vaccLoadDropdowns();
-          return;
-        }
-        window._vaccinationInitialized = true;
-        if (typeof vaccInit === 'function') await vaccInit();
-      },
-      check: function () {
-        return bootListCount('vacc_phoneList') > 0 && bootListCount('vacc_dataEntryList') > 0;
-      }
-    },
-    {
-      name: 'نموذج العينات', pct: 70, msg: 'جاري تحميل قوائم العينات والفحوصات...',
-      fn: async function () {
-        if (window._samplesInitialized) {
-          if (typeof foloadDropdowns === 'function') await foloadDropdowns();
-          return;
-        }
-        window._samplesInitialized = true;
-        if (typeof foinit === 'function') await foinit();
-      },
-      check: function () {
-        return bootListCount('phoneList') > 0 &&
-               bootListCount('testList') > 0 &&
-               bootListCount('sampleTypeList') > 0;
-      }
-    },
-    {
-      name: 'طلبات التحصين', pct: 82, msg: 'جاري تحميل طلبات التحصين...',
-      fn: async function () {
-        window._vrInitialized = true;
-        if (typeof vr_loadData === 'function') await vr_loadData();
-      },
-      check: function () { return window.vr_dataLoaded === true; }
-    },
-    {
-      name: 'التقارير والإحصاءات', pct: 100, msg: 'جاري تحميل التقارير والإحصاءات...',
-      fn: async function () {
-        var today = (typeof fin_localToday === 'function')
-          ? fin_localToday() : new Date().toLocaleDateString('en-CA');
-        var ff = document.getElementById('fin_dateFrom');
-        var ft = document.getElementById('fin_dateTo');
-        if (ff) ff.value = today;
-        if (ft) ft.value = today;
-        window.fin_isFirstLoad = false;
-
-        await Promise.allSettled([
-          (typeof ani_loadData          === 'function') ? ani_loadData()          : Promise.resolve(),
-          (typeof dim_loadData          === 'function') ? dim_loadData()          : Promise.resolve(),
-          (typeof rpt_loadReport        === 'function') ? rpt_loadReport()        : Promise.resolve(),
-          (typeof fin_loadFinancialData === 'function') ? fin_loadFinancialData() : Promise.resolve()
-        ]);
-
-        if (typeof dtr_loadDiseaseList === 'function') {
-          await dtr_loadDiseaseList();
-          var df = document.getElementById('dtr_dateFrom');
-          var dt = document.getElementById('dtr_dateTo');
-          if (df) df.value = '';
-          if (dt) dt.value = '';
-          if (typeof dtr_loadData === 'function') await dtr_loadData();
-        }
-        bootBindOnce();
-      },
-      check: null
-    }
-  ];
-
-  var failed = [];
-
-  for (var i = 0; i < steps.length; i++) {
-    var st = steps[i];
-    ov.set(Math.max(0, st.pct - 12), st.msg);
-    try {
-      await bootRetry(st.fn, 2);
-    } catch (err) {
-      failed.push(st.name + ' — ' + (err.message || err));
-      ov.set(st.pct, st.msg);
-      continue;
-    }
-    if (st.check && !st.check()) {
-      try { await st.fn(); } catch (e) {}
-      if (!st.check()) failed.push(st.name + ' — القوائم عادت فارغة');
-    }
-    ov.set(st.pct, st.msg);
-  }
-
-  if (failed.length) {
-    ov.fail(failed,
-      function () {
-        window._bootRunning = false;
-        ov.close();
-        setTimeout(bootLoadAll, 400);
-      },
-      function () {
-        finish('⚠️ تم فتح النظام مع بيانات ناقصة', 'warning');
-      });
-    return;
-  }
-
-  ov.set(100, '✅ تم تحميل جميع البيانات بنجاح');
-  await new Promise(function (r) { setTimeout(r, 600); });
-  finish('✅ النظام جاهز للاستخدام', 'success');
 }
 
 // ============================================================
@@ -1626,9 +1352,9 @@ function unlockNav() {
     }}
   ];
 
-// ⛔ لم يعد التحميل يعتمد على مؤقتات ثابتة — انظر bootLoadAll()
-  void initQueue;
-  bootLoadAll();
+  initQueue.forEach(function (item) {
+    setTimeout(item.fn, item.delay);
+  });
 }
 
 // تأمين التنقل عند التحميل
@@ -1654,10 +1380,10 @@ lockNav();
       style="width:100%;padding:8px 10px;border:2px solid #ddd;border-radius:5px;
              font-size:14px;font-family:inherit;margin-bottom:12px;color:#333;">
       <option value="">— اختر الولاية —</option>
-      <option value="https://script.google.com/macros/s/AKfycbwi9CkCDB_0-TEEzYNm0OHzaQeJGmAn2XBgWdu0whh1RcYz9pCF8RA94O7jMMHUSpAUIw/exec">شناص</option>
+      <option value="https://script.google.com/macros/s/AKfycbywu3iD-C4C2hJ2-_OR8KkfWde6jDH6FS9XoRjUx9knDs5wur9ny76th_gJNdxs7H1k1A/exec">شناص</option>
       <option value="https://script.google.com/macros/s/AKfycbzEUVgUVBiK3diev7vq-pYQ51zB-Ujq88f_xdAKGX2PXUzE1Io3FZEaWPi3xHUF5ckXGg/exec">لوى</option>
       <option value="https://script.google.com/macros/s/AKfycbyz2zN7GFcvLTRBa7r2qbu8B1Q8i9EQdmOwwxRGCWzJrxPZp2h3b6f5jpNLcq-Mfc9q/exec">صحم</option>
-      <option value="https://script.google.com/macros/s/AKfycbzN0d0fPRzmfhaxKLbZnK0WAIKlLam0bZEUrJPUnEKOYQvsPXVA7-db7sQw9sWJhR7k/exec">صحار</option>
+      <option value="https://script.google.com/macros/s/AKfycbya25-eO1duXpG-KagtlH5DSwlNQ7xy__znjQAbPZwLLSeWQfkTtd_AjQCpucSO6gKG/exec">صحار</option>
       <option value="https://script.google.com/macros/s/AKfycbwnCUYiFL6j9yenFS6jmA9Dqktha6nyb-vKGtWKHpopFy6TtU8IQjdgTfCi7dcUMy1q/exec">الخابورة</option>
       <option value="https://script.google.com/macros/s/AKfycbyYcOAj-NeT18g_f4TZ4SsZK-7YCFHWDHRu0FZPfoqOKpfawx3jTqiBXTA5Xoq_w_YL/exec">السويق</option>
        <option value="https://script.google.com/macros/s/AKfycbzCHdhVnEJU5nq-OYZXTH_wLo-wDfx8pzsIYRosMaWyUsE1mepgAyonUAZ85rqp0i4S/exec">دائرة الثروة الحيوانية</option>
@@ -2599,17 +2325,14 @@ if(m){
   lCU={...m, _u:u};
   window._currentUser = u;
 
-// ===== قراءة رابط الولاية من الشيت =====
+  // ===== قراءة رابط الولاية من الشيت =====
   const urlKey = Object.keys(m).find(k => k.toLowerCase().trim() === 'api_url');
-  const apiUrlVal = urlKey ? (m[urlKey] || '').trim() : '';
-  if (!apiUrlVal || apiUrlVal.indexOf('http') !== 0) {
-    lAlert('l_loginErr','l_loginErrIco','l_loginErrTx','error',
-      '⛔ لا يوجد رابط خدمة (api_url) صالح لهذا المستخدم. راجع المسؤول.');
-    return;
+  if (urlKey && m[urlKey] && m[urlKey].trim() !== '') {
+    window._activeApiUrl = m[urlKey].trim();
+    console.log('[API] رابط الولاية:', m['wilayat'] || '—');
   }
-  window._activeApiUrl = apiUrlVal;
-  console.log('[API] رابط الولاية:', m['wilayat'] || '—', apiUrlVal);
   // =========================================
+
 PERM.init(u, m);
 
   // ===== تهيئة الصفحات بعد تسجيل الدخول =====
@@ -4945,7 +4668,7 @@ function trinit() {
   const overlay = document.getElementById("tr_loadingOverlay");
   if (overlay) overlay.style.display = "flex";
 
-return Promise.all([trloadDropdowns(), trloadData()])
+  Promise.all([trloadDropdowns(), trloadData()])
     .catch(err => trshowMessage("خطأ في التحميل: " + err.message, true))
     .finally(() => { if (overlay) overlay.style.display = "none"; });
 }
@@ -5086,10 +4809,9 @@ async function trSelectIncompleteCase(caseNumber) {
   /* ─── ربط مع trinit ─── */
   if (window.trinit) {
     var origTrinit = window.trinit;
-   window.trinit = function () {
-      var _r = origTrinit.apply(this, arguments);
+    window.trinit = function () {
+      origTrinit.apply(this, arguments);
       setTimeout(updateReceiptFromTable, 1500);
-      return _r;
     };
   }
 
@@ -5632,8 +5354,8 @@ function bd_init(){
 
   bd_bindEvents();
 
-var safeHide = setTimeout(function(){ bd_hideLoading(); }, 5000);
-  return bd_refreshDropdowns()
+  var safeHide = setTimeout(function(){ bd_hideLoading(); }, 5000);
+  bd_refreshDropdowns()
     .then(function(){ clearTimeout(safeHide); bd_hideLoading(); })
     .catch(function(){ clearTimeout(safeHide); bd_hideLoading(); });
 }
