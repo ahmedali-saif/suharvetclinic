@@ -1068,27 +1068,14 @@ function showPage(pageId) {
     setTimeout(foCheckOverdueSamples, 500);
   }
   
-  if (pageId === 'treatment' && !window._treatmentInitialized) {
-    window._treatmentInitialized = true;
-    var trOverlay = document.getElementById('tr_loadingOverlay');
-    if (trOverlay) trOverlay.style.display = 'none';
-    if (typeof trinit === 'function') trinit();
-  }
-  if (pageId === 'breeder' && !window._breederInitialized) {
-    window._breederInitialized = true;
-    if (typeof bd_init === 'function') bd_init();
-  }
-  if (pageId === 'samples' && !window._samplesInitialized) {
+if (pageId === 'samples' && !window._samplesInitialized) {
     window._samplesInitialized = true;
     if (typeof foinit === 'function') foinit();
   }
-  if (pageId === 'vaccination' && !window._vaccinationInitialized) {
-    window._vaccinationInitialized = true;
-    if (typeof vaccInit === 'function') vaccInit();
-  }
-  if (pageId === 'vaccinationRequests' && !window._vrInitialized) {
-    window._vrInitialized = true;
-    if (typeof vr_loadData === 'function') vr_loadData();
+  // تحميل فوري لبيانات الصفحة إن لم تكن قد حُمِّلت من الطابور بعد
+  if (window._initQueueMap && typeof window._initQueueMap[pageId] === 'function') {
+    try { window._initQueueMap[pageId](); }
+    catch (e) { console.warn('[INIT] ' + pageId + ':', e.message); }
   }
 }
   function resetAllPagesData() {
@@ -1199,6 +1186,8 @@ function showPage(pageId) {
 // ============================================================
 function lockNav() {
   window._isLoggedIn = false;
+  window._pageLoaded   = {};
+  window._initQueueMap = {};
   window._treatmentInitialized = false;
   window._vaccinationInitialized = false;
   window._vrInitialized = false;
@@ -1264,104 +1253,137 @@ function unlockNav() {
       if (!allowed) btn.classList.remove('nav-active');
     });
   }
-  // 3. تحميل الصفحات (المنطق الأصلي – لم يتغير)
+// 3. تحميل الصفحات — تسلسلياً (طلب واحد في كل مرة)
+  window._pageLoaded  = window._pageLoaded || {};
+  window._initQueueMap = {};
+
   var initQueue = [
-    { delay: 1000, fn: function () {
-      if (!window._breederInitialized) {
-        window._breederInitialized = true;
-        bd_API_URL = window._activeApiUrl || "";
-        if (typeof bd_init === 'function') bd_init();
-      }
+    { key: 'breeder', fn: function () {
+      if (window._breederInitialized) return;
+      window._breederInitialized = true;
+      bd_API_URL = window._activeApiUrl || "";
+      if (typeof bd_init === 'function') return bd_init();
     }},
-    { delay: 1500, fn: function () {
-      if (!window._treatmentInitialized) {
-        window._treatmentInitialized = true;
-        var ov = document.getElementById('loadingOverlay');
-        if (ov) ov.style.display = 'none';
-        if (typeof trinit === 'function') trinit();
-      }
+    { key: 'treatment', fn: function () {
+      if (window._treatmentInitialized) return;
+      window._treatmentInitialized = true;
+      var ov = document.getElementById('tr_loadingOverlay');
+      if (ov) ov.style.display = 'none';
+      if (typeof trinit === 'function') return trinit();
     }},
-    { delay: 2500, fn: function () {
-      if (!window._vaccinationInitialized) {
-        window._vaccinationInitialized = true;
-        var ov = document.getElementById('vacc_loadingOverlay');
-        if (ov) ov.style.display = 'none';
-        if (typeof vaccInit === 'function') vaccInit();
-      }
+    { key: 'vaccination', fn: function () {
+      if (window._vaccinationInitialized) return;
+      window._vaccinationInitialized = true;
+      var ov = document.getElementById('vacc_loadingOverlay');
+      if (ov) ov.style.display = 'none';
+      if (typeof vaccInit === 'function') return vaccInit();
     }},
-    { delay: 3500, fn: function () {
-      if (!window._vrInitialized) {
-        window._vrInitialized = true;
-        if (typeof vr_loadData === 'function') vr_loadData();
-      }
+    { key: 'vaccinationRequests', fn: function () {
+      if (window._vrInitialized) return;
+      window._vrInitialized = true;
+      if (typeof vr_loadData === 'function') return vr_loadData();
     }},
-    { delay: 4500, fn: function () {
-      if (typeof ani_loadData === 'function') ani_loadData();
+    { key: 'reports', fn: function () {
+      if (window._pageLoaded.reports) return;
+      window._pageLoaded.reports = true;
+      if (typeof dim_loadData === 'function') return dim_loadData();
     }},
-    { delay: 5000, fn: function () {
-      if (typeof dim_loadData === 'function') dim_loadData();
+    { key: 'comprehensiveReport', fn: function () {
+      if (window._pageLoaded.comprehensiveReport) return;
+      window._pageLoaded.comprehensiveReport = true;
+      if (typeof rpt_loadReport === 'function') return rpt_loadReport();
     }},
-    { delay: 5500, fn: function () {
-      if (typeof rpt_loadReport === 'function') rpt_loadReport();
-    }},
-    { delay: 7000, fn: function () {
+    { key: 'financialInventory', fn: function () {
+      if (window._pageLoaded.financialInventory) return;
+      window._pageLoaded.financialInventory = true;
       var today = fin_localToday();
       var ff = document.getElementById('fin_dateFrom');
       var ft = document.getElementById('fin_dateTo');
       if (ff) ff.value = today;
       if (ft) ft.value = today;
       fin_isFirstLoad = false;
-      if (typeof fin_loadFinancialData === 'function') fin_loadFinancialData();
+      if (typeof fin_loadFinancialData === 'function') return fin_loadFinancialData();
     }},
-    { delay: 7500, fn: function () {
-      if (typeof dtr_loadDiseaseList === 'function') {
-        dtr_loadDiseaseList().then(function() {
-          document.getElementById('dtr_dateFrom').value = '';
-          document.getElementById('dtr_dateTo').value = '';
-          if (typeof dtr_loadData === 'function') dtr_loadData();
+    { key: 'diseaseTracking', fn: function () {
+      if (window._pageLoaded.diseaseTracking) return;
+      window._pageLoaded.diseaseTracking = true;
+      var sel = document.getElementById('dtr_diseaseSelect');
+      if (sel && !sel._dtrBound) {
+        sel._dtrBound = true;
+        sel.addEventListener('change', function () {
+          dtr_userClick = true;
+          dtr_loadData();
         });
       }
-      document.getElementById('dtr_diseaseSelect').addEventListener('change', function() {
-        dtr_userClick = true;
-        dtr_loadData();
+      if (typeof dtr_loadDiseaseList !== 'function') return;
+      return dtr_loadDiseaseList().then(function () {
+        var f = document.getElementById('dtr_dateFrom');
+        var t = document.getElementById('dtr_dateTo');
+        if (f) f.value = '';
+        if (t) t.value = '';
+        if (typeof dtr_loadData === 'function') return dtr_loadData();
       });
     }},
-    { delay: 8000, fn: function () {
-      if (typeof ani_loadData === 'function') ani_loadData();
+    { key: 'animalDistribution', fn: function () {
+      if (window._pageLoaded.animalDistribution) return;
+      window._pageLoaded.animalDistribution = true;
       var af = document.getElementById('ani_dateFrom');
       var at = document.getElementById('ani_dateTo');
-      if (af) af.addEventListener('change', function() {
-        var to = document.getElementById('ani_dateTo').value;
-        if (!to) return;
-        if (this.value > to) {
-          showToast('⚠️ تاريخ البداية يجب أن يكون أصغر من تاريخ النهاية', 'warning');
-          this.value = '';
-          return;
-        }
-        ani_loadData();
-      });
-      if (at) at.addEventListener('change', function() {
-        var from = document.getElementById('ani_dateFrom').value;
-        if (!from) {
-          showToast('⚠️ الرجاء إدخال تاريخ البداية أولاً', 'warning');
-          this.value = '';
-          return;
-        }
-        if (from > this.value) {
-          showToast('⚠️ تاريخ البداية يجب أن يكون أصغر من تاريخ النهاية', 'warning');
-          this.value = '';
-          return;
-        }
-        ani_loadData();
-      });
+      if (af && !af._aniBound) {
+        af._aniBound = true;
+        af.addEventListener('change', function () {
+          var to = document.getElementById('ani_dateTo').value;
+          if (!to) return;
+          if (this.value > to) {
+            showToast('⚠️ تاريخ البداية يجب أن يكون أصغر من تاريخ النهاية', 'warning');
+            this.value = '';
+            return;
+          }
+          ani_loadData();
+        });
+      }
+      if (at && !at._aniBound) {
+        at._aniBound = true;
+        at.addEventListener('change', function () {
+          var from = document.getElementById('ani_dateFrom').value;
+          if (!from) {
+            showToast('⚠️ الرجاء إدخال تاريخ البداية أولاً', 'warning');
+            this.value = '';
+            return;
+          }
+          if (from > this.value) {
+            showToast('⚠️ تاريخ البداية يجب أن يكون أصغر من تاريخ النهاية', 'warning');
+            this.value = '';
+            return;
+          }
+          ani_loadData();
+        });
+      }
+      if (typeof ani_loadData === 'function') return ani_loadData();
     }}
   ];
 
-  initQueue.forEach(function (item) {
-    setTimeout(item.fn, item.delay);
-  });
-}
+  initQueue.forEach(function (it) { window._initQueueMap[it.key] = it.fn; });
 
+  (function runNext(i) {
+    if (!window._isLoggedIn) return;
+    if (i >= initQueue.length) {
+      console.log('[INIT] ✅ اكتمل تحميل جميع الصفحات');
+      return;
+    }
+    var item = initQueue[i], done = false;
+    var next = function () {
+      if (done) return;
+      done = true;
+      setTimeout(function () { runNext(i + 1); }, 500);
+    };
+    var res;
+    try { res = item.fn(); }
+    catch (e) { console.warn('[INIT] خطأ في ' + item.key + ':', e.message); }
+    if (res && typeof res.then === 'function') res.then(next, next);
+    else next();
+  })(0);
+}
 // تأمين التنقل عند التحميل
 window._isLoggedIn = false;
 lockNav();
@@ -4308,7 +4330,7 @@ function trinit() {
   const overlay = document.getElementById("tr_loadingOverlay");
   if (overlay) overlay.style.display = "flex";
 
-  Promise.all([trloadDropdowns(), trloadData()])
+return Promise.all([trloadDropdowns(), trloadData()])
     .catch(err => trshowMessage("خطأ في التحميل: " + err.message, true))
     .finally(() => { if (overlay) overlay.style.display = "none"; });
 }
@@ -4449,9 +4471,10 @@ async function trSelectIncompleteCase(caseNumber) {
   /* ─── ربط مع trinit ─── */
   if (window.trinit) {
     var origTrinit = window.trinit;
-    window.trinit = function () {
-      origTrinit.apply(this, arguments);
+   window.trinit = function () {
+      var _r = origTrinit.apply(this, arguments);
       setTimeout(updateReceiptFromTable, 1500);
+      return _r;
     };
   }
 
@@ -4994,12 +5017,11 @@ function bd_init(){
 
   bd_bindEvents();
 
-  var safeHide = setTimeout(function(){ bd_hideLoading(); }, 5000);
-  bd_refreshDropdowns()
+var safeHide = setTimeout(function(){ bd_hideLoading(); }, 5000);
+  return bd_refreshDropdowns()
     .then(function(){ clearTimeout(safeHide); bd_hideLoading(); })
     .catch(function(){ clearTimeout(safeHide); bd_hideLoading(); });
 }
-
 async function bd_fetchAll() {
   var container = document.getElementById("bd_searchResultsContainer");
   var tbody = document.getElementById("bd_searchResultsBody");
