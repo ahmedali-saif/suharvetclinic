@@ -1036,7 +1036,6 @@ function showPage(pageId) {
     return;
   }
   
-  // التحقق من الصلاحيات
   if (window._isLoggedIn && window._userAllowedPages && publicPages.indexOf(pageId) === -1) {
     if (window._userAllowedPages.indexOf(pageId.toLowerCase()) === -1 && pageId !== 'home') {
       showToast('⛔ ليس لديك صلاحية الوصول إلى هذه الصفحة', 'error');
@@ -1051,24 +1050,32 @@ function showPage(pageId) {
   var page = document.getElementById(pageId);
   if (page) page.classList.add("active");
 
-  // 🔹 التعديل الأساسي: إزالة التأثير من جميع الأزرار أولاً
+  // تحديث تأثير الزر النشط
   document.querySelectorAll("nav button").forEach(function(btn) {
     btn.classList.remove("nav-active");
   });
-
-  // ثم إضافة التأثير للزر النشط (إذا كان مرئياً)
   var activeBtn = document.querySelector('nav button[onclick="showPage(\'' + pageId + '\')"]');
   if (activeBtn && activeBtn.style.display !== 'none') {
     activeBtn.classList.add("nav-active");
   }
 
-  // باقي الكود كما هو (فحص العينات المتأخرة، تهيئة الصفحات)
- // فحص العينات المتأخرة: مرة واحدة لكل جلسة بدل كل تنقّل
+  // ===== تحميل بيانات الصفحة (مرة واحدة فقط) =====
+  if (window._initQueueMap && typeof window._initQueueMap[pageId] === 'function') {
+    // استدعِ دالة التحميل مع منع التكرار (الدوال نفسها تتحقق من الأعلام)
+    try {
+      window._initQueueMap[pageId]();
+    } catch (e) {
+      console.warn('[INIT] فشل تحميل ' + pageId + ':', e.message);
+    }
+  }
+
+  // فحص العينات المتأخرة (مرة لكل جلسة)
   if (!window._overdueChecked && typeof foCheckOverdueSamples === 'function' &&
       ['login','settings','home'].indexOf(pageId) === -1) {
     window._overdueChecked = true;
     setTimeout(foCheckOverdueSamples, 1200);
   }
+}
   
 if (pageId === 'samples' && !window._samplesInitialized) {
     window._samplesInitialized = true;
@@ -1181,6 +1188,13 @@ if (pageId === 'samples' && !window._samplesInitialized) {
   // إعادة تعيين الكاش
   
   console.log('[resetAllPagesData] ✅ تم مسح جميع بيانات الصفحات');
+  window._breederInitialized = false;
+  window._treatmentInitialized = false;
+  window._vaccinationInitialized = false;
+  window._vrInitialized = false;
+  window._samplesInitialized = false;
+  window._pageLoaded = {};
+  console.log('[resetAllPagesData] ✅ تم إعادة تعيين أعلام التحميل');
 }
 
 // ============================================================
@@ -1221,12 +1235,11 @@ function lockNav() {
 function unlockNav() {
   window._isLoggedIn = true;
 
-  // 1. إظهار جميع الأزرار مؤقتاً (سيتم إخفاء غير المسموح لاحقاً)
+  // إظهار جميع الأزرار مؤقتاً
   document.querySelectorAll("nav button").forEach(function(btn) {
     btn.disabled = false;
     btn.style.opacity = '';
     btn.style.cursor = '';
-    // إزالة أي إخفاء سابق وإظهار الكل
     btn.style.setProperty('display', 'inline-block', 'important');
     var originalText = btn.getAttribute('data-original-text');
     if (originalText) {
@@ -1235,7 +1248,7 @@ function unlockNav() {
     }
   });
 
-  // 2. تطبيق صلاحيات المستخدم
+  // تطبيق صلاحيات المستخدم
   window._userAllowedPages = null;
   var username = window._currentUser || '';
   if (username && typeof PERM !== 'undefined') {
@@ -1256,53 +1269,54 @@ function unlockNav() {
       if (!allowed) btn.classList.remove('nav-active');
     });
   }
-// 3. تحميل الصفحات — تسلسلياً (طلب واحد في كل مرة)
-  window._pageLoaded  = window._pageLoaded || {};
-  window._initQueueMap = {};
 
-  var initQueue = [
-    { key: 'breeder', fn: function () {
+  // تعبئة خريطة دوال التحميل (دون تشغيلها فوراً)
+  window._initQueueMap = {
+    breeder: function () {
       if (window._breederInitialized) return;
       window._breederInitialized = true;
       bd_API_URL = window._activeApiUrl || "";
-      if (typeof bd_init === 'function') return bd_init();
-    }},
-    { key: 'treatment', fn: function () {
+      if (typeof bd_init === 'function') bd_init();
+    },
+    treatment: function () {
       if (window._treatmentInitialized) return;
       window._treatmentInitialized = true;
       var ov = document.getElementById('tr_loadingOverlay');
       if (ov) ov.style.display = 'none';
-      if (typeof trinit === 'function') return trinit();
-    }},
-    { key: 'vaccination', fn: function () {
+      if (typeof trinit === 'function') trinit();
+    },
+    vaccination: function () {
       if (window._vaccinationInitialized) return;
       window._vaccinationInitialized = true;
       var ov = document.getElementById('vacc_loadingOverlay');
       if (ov) ov.style.display = 'none';
-      if (typeof vaccInit === 'function') return vaccInit();
-    }},
-{ key: 'vaccinationRequests', fn: function () {
+      if (typeof vaccInit === 'function') vaccInit();
+    },
+    vaccinationRequests: function () {
       if (window._vrInitialized) return;
       window._vrInitialized = true;
-      if (typeof vr_loadData === 'function') return vr_loadData();
-    }},
-    { key: 'samples', fn: function () {
+      if (typeof vr_loadData === 'function') vr_loadData();
+    },
+    samples: function () {
       if (window._samplesInitialized) return;
       window._samplesInitialized = true;
-      if (typeof foinit === 'function') return foinit();
-    }},
-    { key: 'reports', fn: function () {
-      if (window._pageLoaded.reports) return;
+      if (typeof foinit === 'function') foinit();
+    },
+    reports: function () {
+      if (window._pageLoaded && window._pageLoaded.reports) return;
+      if (!window._pageLoaded) window._pageLoaded = {};
       window._pageLoaded.reports = true;
-      if (typeof dim_loadData === 'function') return dim_loadData();
-    }},
-    { key: 'comprehensiveReport', fn: function () {
-      if (window._pageLoaded.comprehensiveReport) return;
+      if (typeof dim_loadData === 'function') dim_loadData();
+    },
+    comprehensiveReport: function () {
+      if (window._pageLoaded && window._pageLoaded.comprehensiveReport) return;
+      if (!window._pageLoaded) window._pageLoaded = {};
       window._pageLoaded.comprehensiveReport = true;
-      if (typeof rpt_loadReport === 'function') return rpt_loadReport();
-    }},
-    { key: 'financialInventory', fn: function () {
-      if (window._pageLoaded.financialInventory) return;
+      if (typeof rpt_loadReport === 'function') rpt_loadReport();
+    },
+    financialInventory: function () {
+      if (window._pageLoaded && window._pageLoaded.financialInventory) return;
+      if (!window._pageLoaded) window._pageLoaded = {};
       window._pageLoaded.financialInventory = true;
       var today = fin_localToday();
       var ff = document.getElementById('fin_dateFrom');
@@ -1310,10 +1324,11 @@ function unlockNav() {
       if (ff) ff.value = today;
       if (ft) ft.value = today;
       fin_isFirstLoad = false;
-      if (typeof fin_loadFinancialData === 'function') return fin_loadFinancialData();
-    }},
-    { key: 'diseaseTracking', fn: function () {
-      if (window._pageLoaded.diseaseTracking) return;
+      if (typeof fin_loadFinancialData === 'function') fin_loadFinancialData();
+    },
+    diseaseTracking: function () {
+      if (window._pageLoaded && window._pageLoaded.diseaseTracking) return;
+      if (!window._pageLoaded) window._pageLoaded = {};
       window._pageLoaded.diseaseTracking = true;
       var sel = document.getElementById('dtr_diseaseSelect');
       if (sel && !sel._dtrBound) {
@@ -1324,16 +1339,17 @@ function unlockNav() {
         });
       }
       if (typeof dtr_loadDiseaseList !== 'function') return;
-      return dtr_loadDiseaseList().then(function () {
+      dtr_loadDiseaseList().then(function () {
         var f = document.getElementById('dtr_dateFrom');
         var t = document.getElementById('dtr_dateTo');
         if (f) f.value = '';
         if (t) t.value = '';
-        if (typeof dtr_loadData === 'function') return dtr_loadData();
-      });
-    }},
-    { key: 'animalDistribution', fn: function () {
-      if (window._pageLoaded.animalDistribution) return;
+        if (typeof dtr_loadData === 'function') dtr_loadData();
+      }).catch(function(e){ console.warn(e); });
+    },
+    animalDistribution: function () {
+      if (window._pageLoaded && window._pageLoaded.animalDistribution) return;
+      if (!window._pageLoaded) window._pageLoaded = {};
       window._pageLoaded.animalDistribution = true;
       var af = document.getElementById('ani_dateFrom');
       var at = document.getElementById('ani_dateTo');
@@ -1367,188 +1383,18 @@ function unlockNav() {
           ani_loadData();
         });
       }
-      if (typeof ani_loadData === 'function') return ani_loadData();
-    }}
-  ];
-
-  initQueue.forEach(function (it) { window._initQueueMap[it.key] = it.fn; });
-
-(function runNext(i) {
-    if (!window._isLoggedIn) return;
-    if (i >= initQueue.length) {
-      console.log('[INIT] ✅ اكتمل تحميل جميع الصفحات');
-      return;
+      if (typeof ani_loadData === 'function') ani_loadData();
     }
-    var key  = initQueue[i].key;
-    var next = function () { setTimeout(function () { runNext(i + 1); }, 500); };
-    window.PageGate.load(key).then(next, function (e) {
-      console.warn('[INIT] ⚠️ فشل تحميل ' + key + ': ' + (e.message || e));
-      next();
-    });
-  })(0);
+  };
+
+  // لا نقوم بتحميل أي صفحة فورياً، بل ننتظر حتى ينقر المستخدم عليها.
+  console.log('[INIT] ✅ تم تجهيز خريطة التحميل، الصفحات تُحمَّل عند أول دخول.');
 }
 // تأمين التنقل عند التحميل
 window._isLoggedIn = false;
 lockNav();
 
-/* ============================================================
-   PageGate — لا تُفتح الصفحة إلا بعد تأكيد تحميل بياناتها
-   ============================================================ */
-(function (global) {
-  "use strict";
 
-  var LABELS = {
-    breeder:'سجل المربي', treatment:'سجل العلاج', vaccination:'سجل التحصين',
-    vaccinationRequests:'طلبات التحصين', samples:'نموذج العينات',
-    reports:'الأدوية المصروفة', financialInventory:'المتحصلات اليومية',
-    diseaseTracking:'تتبع المرض', animalDistribution:'توزيع الحيوانات',
-    comprehensiveReport:'التقرير الشامل'
-  };
-
-  /* أعلام التهيئة — تُصفَّر عند الفشل ليعمل زر إعادة المحاولة */
-  var FLAG = {
-    breeder:'_breederInitialized', treatment:'_treatmentInitialized',
-    vaccination:'_vaccinationInitialized', vaccinationRequests:'_vrInitialized',
-    samples:'_samplesInitialized'
-  };
-
-  var PUBLIC   = ['login','home','settings','dashboard','doctorPerformance'];
-  var TIMEOUT  = 30000;
-  var state    = {};   /* pageId → ready | loading | error */
-  var pending  = {};
-  var _orig    = global.showPage;
-
-  function loaderFor(id) {
-    return (global._initQueueMap && global._initQueueMap[id]) || null;
-  }
-
-  function resetFlag(id) {
-    if (FLAG[id]) global[FLAG[id]] = false;
-    if (global._pageLoaded) delete global._pageLoaded[id];
-  }
-
-  /* ── شاشة الانتظار ── */
-  function box() {
-    var el = document.getElementById('pg_overlay');
-    if (el) return el;
-    el = document.createElement('div');
-    el.id = 'pg_overlay';
-    el.style.cssText =
-      'position:fixed;inset:0;background:rgba(255,255,255,.97);z-index:99990;' +
-      'display:none;align-items:center;justify-content:center;direction:rtl;' +
-      'font-family:Tahoma,Arial,sans-serif;';
-    el.innerHTML =
-      '<div style="text-align:center;max-width:440px;padding:26px 34px;background:#fff;' +
-      'border:3px solid #00b8d9;border-radius:14px;box-shadow:0 10px 34px rgba(0,0,0,.18);">' +
-        '<div id="pg_spin" style="width:58px;height:58px;border:6px solid #e0e0e0;' +
-        'border-top:6px solid #00b8d9;border-radius:50%;animation:spin 1s linear infinite;' +
-        'margin:0 auto 16px;"></div>' +
-        '<div id="pg_icon" style="font-size:44px;margin-bottom:10px;display:none;">⚠️</div>' +
-        '<div id="pg_title" style="font-size:16px;font-weight:bold;color:#00b8d9;margin-bottom:8px;"></div>' +
-        '<div id="pg_sub" style="font-size:12.5px;color:#666;line-height:1.9;"></div>' +
-        '<div id="pg_btns" style="margin-top:18px;display:none;gap:10px;justify-content:center;"></div>' +
-      '</div>';
-    document.body.appendChild(el);
-    return el;
-  }
-
-  function showLoading(id) {
-    var el = box();
-    el.style.display = 'flex';
-    document.getElementById('pg_spin').style.display = 'block';
-    document.getElementById('pg_icon').style.display = 'none';
-    document.getElementById('pg_btns').style.display = 'none';
-    document.getElementById('pg_title').style.color  = '#00b8d9';
-    document.getElementById('pg_title').textContent  = '⏳ جاري تحميل ' + (LABELS[id] || id);
-    document.getElementById('pg_sub').textContent    =
-      'يتم جلب القوائم والجداول — لن تُفتح الصفحة قبل اكتمال البيانات';
-  }
-
-  function showError(id, msg) {
-    var el = box();
-    el.style.display = 'flex';
-    document.getElementById('pg_spin').style.display = 'none';
-    document.getElementById('pg_icon').style.display = 'block';
-    document.getElementById('pg_title').style.color  = '#e65050';
-    document.getElementById('pg_title').textContent  = 'تعذّر تحميل ' + (LABELS[id] || id);
-    document.getElementById('pg_sub').textContent    = msg || 'خطأ غير معروف';
-
-    var btns = document.getElementById('pg_btns');
-    btns.style.display = 'flex';
-    btns.innerHTML =
-      '<button id="pg_retry" style="background:#00b8d9;color:#fff;border:none;border-radius:7px;' +
-      'padding:9px 26px;font-weight:bold;cursor:pointer;font-family:inherit;font-size:13px;">🔄 إعادة المحاولة</button>' +
-      '<button id="pg_skip" style="background:#95a5a6;color:#fff;border:none;border-radius:7px;' +
-      'padding:9px 26px;font-weight:bold;cursor:pointer;font-family:inherit;font-size:13px;">فتح بدون بيانات</button>';
-
-    document.getElementById('pg_retry').onclick = function () {
-      resetFlag(id); state[id] = null; global.showPage(id);
-    };
-    document.getElementById('pg_skip').onclick = function () {
-      hide(); _orig.call(global, id);
-    };
-  }
-
-  function hide() {
-    var el = document.getElementById('pg_overlay');
-    if (el) el.style.display = 'none';
-  }
-
-  /* ── تنفيذ التحميل ── */
-  function load(id) {
-    if (state[id] === 'ready') return Promise.resolve(true);
-    if (pending[id])            return pending[id];
-
-    var fn = loaderFor(id);
-    if (!fn) { state[id] = 'ready'; return Promise.resolve(true); }
-
-    state[id] = 'loading';
-    var pr = new Promise(function (resolve, reject) {
-      var done = false;
-      var timer = setTimeout(function () {
-        if (!done) { done = true; reject(new Error('انتهت المهلة (30 ثانية) — الخادم لم يستجب')); }
-      }, TIMEOUT);
-
-      Promise.resolve().then(fn).then(function () {
-        if (done) return; done = true; clearTimeout(timer); resolve(true);
-      }, function (e) {
-        if (done) return; done = true; clearTimeout(timer); reject(e);
-      });
-    });
-
-    pending[id] = pr.then(function () {
-      state[id] = 'ready'; delete pending[id]; return true;
-    }, function (e) {
-      state[id] = 'error'; delete pending[id]; resetFlag(id); throw e;
-    });
-
-    return pending[id];
-  }
-
-  global.PageGate = {
-    load: load,
-    isReady: function (id) { return state[id] === 'ready'; },
-    resetAll: function () { state = {}; pending = {}; hide(); }
-  };
-
-  /* ── اعتراض showPage ── */
-  global.showPage = function (pageId) {
-    var args = arguments;
-    if (PUBLIC.indexOf(pageId) !== -1 || state[pageId] === 'ready' || !loaderFor(pageId)) {
-      hide();
-      return _orig.apply(global, args);
-    }
-    showLoading(pageId);
-    load(pageId).then(function () {
-      hide();
-      _orig.apply(global, args);
-    }, function (err) {
-      showError(pageId, err.message || String(err));
-    });
-  };
-  global.showPage._pageGate = true;
-
-})(window);
 </script>
 
 <!-- الصفحات -->
