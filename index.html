@@ -1027,117 +1027,6 @@ window.showToast = function(message, type) {
 <!-- دالة التنقل المركزية -->
 <script>
 "use strict";
-
-<!-- دالة التنقل المركزية -->
-<script>
-"use strict";
-
-// ============================================================
-//  طابور تحميل الصفحات — صفحة واحدة في كل مرة
-//  لا تُرسل طلبات صفحة جديدة حتى تنتهي الصفحة الجارية
-// ============================================================
-var PAGE_LOAD_INFO = {
-  breeder:             { flag: '_breederLoaded',             ov: 'bd_pageLoadingOverlay',        mode: 'flex'  },
-  treatment:           { flag: '_treatmentLoaded',           ov: 'tr_loadingOverlay',            mode: 'flex'  },
-  vaccination:         { flag: '_vaccinationLoaded',         ov: 'vacc_loadingOverlay',          mode: 'flex'  },
-  vaccinationRequests: { flag: '_vrLoaded',                  ov: 'vr_loadingOverlay',            mode: 'flex'  },
-  samples:             { flag: '_samplesLoaded',             ov: 'initialLoadingOverlaySamples', mode: 'flex'  },
-  reports:             { flag: '_reportsLoaded' },
-  comprehensiveReport: { flag: '_comprehensiveReportLoaded', ov: 'rpt_loadingOverlay',           mode: 'block' },
-  financialInventory:  { flag: '_financialInventoryLoaded' },
-  diseaseTracking:     { flag: '_diseaseTrackingLoaded' },
-  animalDistribution:  { flag: '_animalDistributionLoaded',  ov: 'ani_loadingMsg',               mode: 'block' },
-  doctorPerformance:   { flag: '_doctorPerformanceLoaded',   ov: 'dp_loader',                    mode: 'block' }
-};
-
-window._pageLoadQueue   = [];
-window._pageLoadBusy    = false;
-window._pageLoadIdleCbs = [];
-
-function _pageOverlay(pageId, show) {
-  var info = PAGE_LOAD_INFO[pageId];
-  if (!info || !info.ov) return;
-  var el = document.getElementById(info.ov);
-  if (!el) return;
-  if (show) {
-    el.classList.remove('hide');
-    el.classList.remove('hidden');
-    el.style.opacity = '1';
-    el.style.pointerEvents = '';
-    el.style.display = info.mode;
-  } else {
-    el.style.display = 'none';
-  }
-}
-
-function enqueuePageLoad(pageId) {
-  if (!window._initQueueMap || typeof window._initQueueMap[pageId] !== 'function') {
-    console.log('[QUEUE] لا توجد دالة تحميل للصفحة ' + pageId);
-    return;
-  }
-  var info = PAGE_LOAD_INFO[pageId];
-  if (info && info.flag && window[info.flag]) return;       // محمّلة مسبقاً
-  if (window._pageLoadQueue.indexOf(pageId) !== -1) return;  // موجودة في الطابور
-
-  window._pageLoadQueue.push(pageId);
-
-  if (window._pageLoadBusy) {
-    _pageOverlay(pageId, true);
-    showToast('⏳ سيتم تحميل بيانات هذه الصفحة بعد انتهاء الصفحة الجارية', 'warning');
-    console.log('[QUEUE] تأجيل ' + pageId + ' — الطابور: ' + window._pageLoadQueue.join(', '));
-    return;
-  }
-  _drainPageQueue();
-}
-
-function _drainPageQueue() {
-  if (window._pageLoadBusy) return;
-  if (!window._pageLoadQueue.length) { _runPageIdleCbs(); return; }
-
-  var pageId = window._pageLoadQueue.shift();
-  var fn = window._initQueueMap ? window._initQueueMap[pageId] : null;
-  if (typeof fn !== 'function') { setTimeout(_drainPageQueue, 0); return; }
-
-  window._pageLoadBusy = true;
-  console.log('[QUEUE] ▶ بدء تحميل ' + pageId);
-
-  var finish = function () {
-    window._pageLoadBusy = false;
-    _pageOverlay(pageId, false);
-    console.log('[QUEUE] ✔ انتهى تحميل ' + pageId);
-    setTimeout(_drainPageQueue, 0);
-  };
-
-  var result;
-  try {
-    result = fn();
-  } catch (e) {
-    console.warn('[QUEUE] فشل تحميل ' + pageId + ':', e.message);
-    showToast('حدث خطأ أثناء تحميل البيانات: ' + e.message, 'error');
-  }
-
-  if (result && typeof result.then === 'function') {
-    result.then(finish, function (e) {
-      console.warn('[QUEUE] فشل تحميل ' + pageId + ':', (e && e.message) || e);
-      finish();
-    });
-  } else {
-    setTimeout(finish, 0);
-  }
-}
-
-function afterPageLoadIdle(cb) {
-  if (typeof cb !== 'function') return;
-  window._pageLoadIdleCbs.push(cb);
-  _runPageIdleCbs();
-}
-
-function _runPageIdleCbs() {
-  if (window._pageLoadBusy || window._pageLoadQueue.length) return;
-  var cbs = window._pageLoadIdleCbs.splice(0);
-  cbs.forEach(function (cb) { try { cb(); } catch (e) {} });
-}
-
 // ============================================================
 //  showPage — دالة التنقل الرئيسية
 // ============================================================
@@ -1178,14 +1067,26 @@ function showPage(pageId) {
     activeBtn.classList.add("nav-active");
   }
 
-  // ===== إدراج تحميل بيانات الصفحة في الطابور (طلب واحد في كل مرة) =====
-  enqueuePageLoad(pageId);
+  // ===== تحميل بيانات الصفحة — عبر الطابور إن توفّر، وإلا مباشرة =====
+  try {
+    if (typeof window.enqueuePageLoad === 'function') {
+      window.enqueuePageLoad(pageId);
+    } else if (window._initQueueMap && typeof window._initQueueMap[pageId] === 'function') {
+      window._initQueueMap[pageId]();
+    }
+  } catch (e) {
+    console.warn('[INIT] فشل تحميل ' + pageId + ':', e.message);
+  }
 
-  // فحص العينات المتأخرة (مرة لكل جلسة) — بعد فراغ طابور التحميل
+  // فحص العينات المتأخرة (مرة لكل جلسة)
   if (!window._overdueChecked && typeof foCheckOverdueSamples === 'function' &&
       ['login','settings','home'].indexOf(pageId) === -1) {
     window._overdueChecked = true;
-    afterPageLoadIdle(function () { setTimeout(foCheckOverdueSamples, 1200); });
+    if (typeof window.afterPageLoadIdle === 'function') {
+      window.afterPageLoadIdle(function () { setTimeout(foCheckOverdueSamples, 1200); });
+    } else {
+      setTimeout(foCheckOverdueSamples, 1200);
+    }
   }
 }
 
@@ -1421,12 +1322,132 @@ function resetAllPagesData() {
   console.log('[resetAllPagesData] ✅ تم إعادة تعيين أعلام التحميل والطابور');
 }
 // تأمين التنقل عند التحميل
+function lockNav() {
+  window._isLoggedIn = false;
+  document.querySelectorAll('nav button').forEach(function (btn) {
+    var oc = btn.getAttribute('onclick') || '';
+    if (oc.indexOf("'login'") !== -1) return;
+    btn.classList.remove('nav-active');
+    btn.style.setProperty('display', 'none', 'important');
+  });
+}
+
 window._isLoggedIn = false;
 lockNav();
 
 
 </script>
 
+<!-- طابور تحميل الصفحات — كتلة مستقلة -->
+<script>
+(function (w) {
+  "use strict";
+
+  var INFO = {
+    breeder:             { flag: '_breederLoaded',             ov: 'bd_pageLoadingOverlay',        mode: 'flex'  },
+    treatment:           { flag: '_treatmentLoaded',           ov: 'tr_loadingOverlay',            mode: 'flex'  },
+    vaccination:         { flag: '_vaccinationLoaded',         ov: 'vacc_loadingOverlay',          mode: 'flex'  },
+    vaccinationRequests: { flag: '_vrLoaded',                  ov: 'vr_loadingOverlay',            mode: 'flex'  },
+    samples:             { flag: '_samplesLoaded',             ov: 'initialLoadingOverlaySamples', mode: 'flex'  },
+    reports:             { flag: '_reportsLoaded' },
+    comprehensiveReport: { flag: '_comprehensiveReportLoaded', ov: 'rpt_loadingOverlay',           mode: 'block' },
+    financialInventory:  { flag: '_financialInventoryLoaded' },
+    diseaseTracking:     { flag: '_diseaseTrackingLoaded' },
+    animalDistribution:  { flag: '_animalDistributionLoaded',  ov: 'ani_loadingMsg',               mode: 'block' },
+    doctorPerformance:   { flag: '_doctorPerformanceLoaded',   ov: 'dp_loader',                    mode: 'block' }
+  };
+
+  w._pageLoadQueue   = [];
+  w._pageLoadBusy    = false;
+  w._pageLoadIdleCbs = [];
+
+  function toast(msg, type) {
+    if (typeof w.showToast === 'function') w.showToast(msg, type);
+  }
+
+  function overlay(pageId, show) {
+    var info = INFO[pageId];
+    if (!info || !info.ov) return;
+    var el = document.getElementById(info.ov);
+    if (!el) return;
+    if (show) {
+      el.classList.remove('hide');
+      el.classList.remove('hidden');
+      el.style.opacity = '1';
+      el.style.pointerEvents = '';
+      el.style.display = info.mode;
+    } else {
+      el.style.display = 'none';
+    }
+  }
+
+  function runIdle() {
+    if (w._pageLoadBusy || w._pageLoadQueue.length) return;
+    var cbs = w._pageLoadIdleCbs.splice(0);
+    cbs.forEach(function (cb) { try { cb(); } catch (e) {} });
+  }
+
+  function drain() {
+    if (w._pageLoadBusy) return;
+    if (!w._pageLoadQueue.length) { runIdle(); return; }
+
+    var pageId = w._pageLoadQueue.shift();
+    var fn = w._initQueueMap ? w._initQueueMap[pageId] : null;
+    if (typeof fn !== 'function') { setTimeout(drain, 0); return; }
+
+    w._pageLoadBusy = true;
+    console.log('[QUEUE] ▶ بدء تحميل ' + pageId);
+
+    var finish = function () {
+      w._pageLoadBusy = false;
+      overlay(pageId, false);
+      console.log('[QUEUE] ✔ انتهى تحميل ' + pageId);
+      setTimeout(drain, 0);
+    };
+
+    var result;
+    try {
+      result = fn();
+    } catch (e) {
+      console.warn('[QUEUE] فشل تحميل ' + pageId + ':', e.message);
+      toast('حدث خطأ أثناء تحميل البيانات: ' + e.message, 'error');
+    }
+
+    if (result && typeof result.then === 'function') {
+      result.then(finish, function (e) {
+        console.warn('[QUEUE] فشل تحميل ' + pageId + ':', (e && e.message) || e);
+        finish();
+      });
+    } else {
+      setTimeout(finish, 0);
+    }
+  }
+
+  w.enqueuePageLoad = function (pageId) {
+    if (!w._initQueueMap || typeof w._initQueueMap[pageId] !== 'function') return;
+
+    var info = INFO[pageId];
+    if (info && info.flag && w[info.flag]) return;
+    if (w._pageLoadQueue.indexOf(pageId) !== -1) return;
+
+    w._pageLoadQueue.push(pageId);
+
+    if (w._pageLoadBusy) {
+      overlay(pageId, true);
+      toast('⏳ سيتم تحميل بيانات هذه الصفحة بعد انتهاء الصفحة الجارية', 'warning');
+      console.log('[QUEUE] تأجيل ' + pageId + ' — الطابور: ' + w._pageLoadQueue.join(', '));
+      return;
+    }
+    drain();
+  };
+
+  w.afterPageLoadIdle = function (cb) {
+    if (typeof cb !== 'function') return;
+    w._pageLoadIdleCbs.push(cb);
+    runIdle();
+  };
+})(window);
+</script>
 <!-- الصفحات -->
 <div id="home" class="page">
   <!-- زر المظهر مستقل عن نظام التبويبات -->
