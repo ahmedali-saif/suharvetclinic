@@ -1063,9 +1063,11 @@ function showPage(pageId) {
   }
 
   // باقي الكود كما هو (فحص العينات المتأخرة، تهيئة الصفحات)
-  var excludedPages = ['login', 'settings', 'home'];
-  if (excludedPages.indexOf(pageId) === -1 && typeof foCheckOverdueSamples === 'function') {
-    setTimeout(foCheckOverdueSamples, 500);
+ // فحص العينات المتأخرة: مرة واحدة لكل جلسة بدل كل تنقّل
+  if (!window._overdueChecked && typeof foCheckOverdueSamples === 'function' &&
+      ['login','settings','home'].indexOf(pageId) === -1) {
+    window._overdueChecked = true;
+    setTimeout(foCheckOverdueSamples, 1200);
   }
   
 if (pageId === 'samples' && !window._samplesInitialized) {
@@ -9910,57 +9912,34 @@ var overdueSessionDismissed = false;
 document.getElementById('overdueOverlay').onclick = function(e){ /* disabled */ };
 function foCheckOverdueSamples() {
   if (overdueSessionDismissed) return;
-  focallApi("fosearchSamplesData", { showAll: true }).then(function(res) {
-    if (!res.success || !res.data || !res.data.length) {
-      foCloseOverdueAlert();
-      return;
-    }
-    var today = new Date(); today.setHours(0,0,0,0);
-    var overdue = res.data.filter(function(row) {
-      var hasUnresolved = [1,2,3,4,5].some(function(k){
-        var test   = row['test'+k]   && row['test'+k].toString().trim()   !== '';
-        var result = row['result'+k] && row['result'+k].toString().trim() !== '';
-        return test && !result;
-      });
-      if (!hasUnresolved) return false;
-      var sentRaw = row['sampleSentDate'] || row['samplesentdate'] || '';
-      if (!sentRaw) return false;
-      var sentDate = new Date(sentRaw); sentDate.setHours(0,0,0,0);
-      if (isNaN(sentDate)) return false;
-      var diffDays = Math.floor((today - sentDate) / 86400000);
-      row._diffDays = diffDays;
-      return diffDays > 7;
-    });
-    if (!overdue.length) return;
-    overdue.sort(function(a,b){ return b._diffDays - a._diffDays; });
+  focallApi("fogetOverdueSamples", { days: 7 }).then(function (res) {
+    if (!res.success || !res.data || !res.data.length) return;
+    var overdue = res.data;
+
     document.getElementById('overdueBadge').textContent = overdue.length;
     var html = '<table class="overdue-table"><thead><tr>'
       + '<th>رقم العينة</th><th>الاسم</th><th>المنطقة</th><th>نوع العينة</th>'
       + '<th>تاريخ الإرسال</th><th>أيام الانتظار</th><th>الفحوصات بلا نتيجة</th>'
       + '</tr></thead><tbody>';
-    overdue.forEach(function(row) {
-      var tests = [1,2,3,4,5].map(function(k){
-        var test   = row['test'+k]   && row['test'+k].toString().trim();
-        var result = row['result'+k] && row['result'+k].toString().trim();
-        return (test && !result) ? test : null;
-      }).filter(Boolean).join('، ') || '—';
-      var badgeCls = row._diffDays > 14 ? '' : 'warn';
+    overdue.forEach(function (row) {
+      var badgeCls = row.diffDays > 14 ? '' : 'warn';
       html += '<tr>'
-        + '<td><strong>' + (row.caseNumberrt||'') + '</strong></td>'
-        + '<td>' + (row.name||'') + '</td>'
-        + '<td>' + (row.region||'') + '</td>'
-        + '<td>' + (row.sampleType||'') + '</td>'
-        + '<td>' + (row.sampleSentDate||row.samplesentdate||'') + '</td>'
-        + '<td><span class="overdue-days-badge ' + badgeCls + '">' + row._diffDays + ' يوم</span></td>'
-        + '<td style="text-align:right">' + tests + '</td>'
+        + '<td><strong>' + (row.caseNumberrt || '') + '</strong></td>'
+        + '<td>' + (row.name       || '') + '</td>'
+        + '<td>' + (row.region     || '') + '</td>'
+        + '<td>' + (row.sampleType || '') + '</td>'
+        + '<td>' + (row.sampleSentDate || '') + '</td>'
+        + '<td><span class="overdue-days-badge ' + badgeCls + '">' + row.diffDays + ' يوم</span></td>'
+        + '<td style="text-align:right">' + (row.pendingTests || '—') + '</td>'
         + '</tr>';
     });
     html += '</tbody></table>';
     document.getElementById('overdueTableContainer').innerHTML = html;
+
     var overlay = document.getElementById('overdueOverlay');
     overlay.style.display = 'flex';
-    setTimeout(function(){ overlay.classList.add('show'); }, 10);
-  }).catch(function(){});
+    setTimeout(function () { overlay.classList.add('show'); }, 10);
+  }).catch(function () {});
 }
 
 function foCloseOverdueAlert() {
@@ -12358,98 +12337,50 @@ function sendTelegram(text) {
   /* ══════════════════════════════════════════════════════
      ٢. العينات التي تجاوزت 7 أيام بدون نتيجة
      ══════════════════════════════════════════════════════ */
-  async function notifyOverdueSamples(username, dateStr, timeStr) {
-    var callFn = global.focallApi;
-    if (typeof callFn !== "function") return;
- 
-    try {
-      var res = await callFn("fosearchSamplesData", { showAll: true });
-      if (!res.success || !res.data || !res.data.length) return;
- 
-      var today = new Date();
-      today.setHours(0, 0, 0, 0);
- 
-      /* فلترة العينات المتأخرة */
-      var overdue = [];
-      res.data.forEach(function (row) {
-        /* هل يوجد فحص بدون نتيجة؟ */
-        var hasUnresolved = false;
-        for (var k = 1; k <= 5; k++) {
-          var test   = (row["test"   + k] || "").toString().trim();
-          var result = (row["result" + k] || "").toString().trim();
-          if (test && !result) { hasUnresolved = true; break; }
-        }
-        if (!hasUnresolved) return;
- 
-        /* حساب الأيام منذ الإرسال */
-        var sentRaw = row["sampleSentDate"] || row["samplesentdate"] || "";
-        if (!sentRaw) return;
-        var sentDate = new Date(sentRaw);
-        sentDate.setHours(0, 0, 0, 0);
-        if (isNaN(sentDate.getTime())) return;
-        var diffDays = Math.floor((today - sentDate) / 86400000);
-        if (diffDays <= 7) return;
- 
-        /* الفحوصات بدون نتيجة */
-        var pendingTests = [];
-        for (var j = 1; j <= 5; j++) {
-          var t = (row["test" + j] || "").toString().trim();
-          var r = (row["result" + j] || "").toString().trim();
-          if (t && !r) pendingTests.push(t);
-        }
- 
-        overdue.push({
-          caseNumber  : row.caseNumberrt || "—",
-          name        : row.name         || "—",
-          region      : row.region       || "—",
-          sampleType  : row.sampleType   || "—",
-          sentDate    : sentRaw,
-          diffDays    : diffDays,
-          pendingTests: pendingTests.join("، ")
-        });
-      });
- 
-      if (!overdue.length) {
-        console.log("[TgNotify] لا توجد عينات متأخرة");
-        return;
-      }
- 
-      /* ترتيب تنازلي حسب أيام الانتظار */
-      overdue.sort(function (a, b) { return b.diffDays - a.diffDays; });
- 
-      var lines = [
-        "🧪 تنبيه: عينات تجاوزت 7 أيام بدون نتيجة",
-        "━━━━━━━━━━━━━━━━━━━━",
-        "👤 المستخدم: " + username,
-        "🕐 وقت الفتح: " + timeStr + " — " + dateStr,
-        "📊 عدد العينات: " + overdue.length + " عينة متأخرة",
-        "━━━━━━━━━━━━━━━━━━━━",
-      ];
- 
-      var maxShow = Math.min(overdue.length, 20);
-      for (var i = 0; i < maxShow; i++) {
-        var s = overdue[i];
-        lines.push(
-          (i + 1) + ". رقم العينة: " + s.caseNumber +
-          " | الاسم: "       + s.name        +
-          " | المنطقة: "     + s.region      +
-          " | أيام الانتظار: " + s.diffDays + " يوم" +
-          " | الفحوصات: "    + (s.pendingTests || "—")
-        );
-      }
-      if (overdue.length > 20)
-        lines.push("... و " + (overdue.length - 20) + " عينة أخرى");
- 
-      lines.push("━━━━━━━━━━━━━━━━━━━━");
-      lines.push("⏰ يرجى متابعة هذه العينات مع المختبر وإدخال النتائج.");
- 
-      sendTelegram(lines.join("\n"));
- 
-    } catch (err) {
-      console.warn("[TgNotify] خطأ في العينات المتأخرة:", err.message || err);
+ async function notifyOverdueSamples(username, dateStr, timeStr) {
+  var callFn = global.focallApi;
+  if (typeof callFn !== "function") return;
+
+  try {
+    var res = await callFn("fogetOverdueSamples", { days: 7 });
+    if (!res.success || !res.data || !res.data.length) {
+      console.log("[TgNotify] لا توجد عينات متأخرة");
+      return;
     }
+    var overdue = res.data;   // مفلترة ومرتّبة من الخادم
+
+    var lines = [
+      "🧪 تنبيه: عينات تجاوزت 7 أيام بدون نتيجة",
+      "━━━━━━━━━━━━━━━━━━━━",
+      "👤 المستخدم: " + username,
+      "🕐 وقت الفتح: " + timeStr + " — " + dateStr,
+      "📊 عدد العينات: " + overdue.length + " عينة متأخرة",
+      "━━━━━━━━━━━━━━━━━━━━",
+    ];
+
+    var maxShow = Math.min(overdue.length, 20);
+    for (var i = 0; i < maxShow; i++) {
+      var s = overdue[i];
+      lines.push(
+        (i + 1) + ". رقم العينة: " + (s.caseNumberrt || "—") +
+        " | الاسم: "         + (s.name   || "—") +
+        " | المنطقة: "       + (s.region || "—") +
+        " | أيام الانتظار: " + s.diffDays + " يوم" +
+        " | الفحوصات: "      + (s.pendingTests || "—")
+      );
+    }
+    if (overdue.length > 20)
+      lines.push("... و " + (overdue.length - 20) + " عينة أخرى");
+
+    lines.push("━━━━━━━━━━━━━━━━━━━━");
+    lines.push("⏰ يرجى متابعة هذه العينات مع المختبر وإدخال النتائج.");
+
+    sendTelegram(lines.join("\n"));
+
+  } catch (err) {
+    console.warn("[TgNotify] خطأ في العينات المتأخرة:", err.message || err);
   }
- 
+}
   /* ══════════════════════════════════════════════════════
      ٣. الدالة الرئيسية — تُشغَّل مرة واحدة عند تسجيل الدخول
      ══════════════════════════════════════════════════════ */
