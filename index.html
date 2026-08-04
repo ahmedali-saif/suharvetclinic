@@ -1028,6 +1028,116 @@ window.showToast = function(message, type) {
 <script>
 "use strict";
 
+<!-- دالة التنقل المركزية -->
+<script>
+"use strict";
+
+// ============================================================
+//  طابور تحميل الصفحات — صفحة واحدة في كل مرة
+//  لا تُرسل طلبات صفحة جديدة حتى تنتهي الصفحة الجارية
+// ============================================================
+var PAGE_LOAD_INFO = {
+  breeder:             { flag: '_breederLoaded',             ov: 'bd_pageLoadingOverlay',        mode: 'flex'  },
+  treatment:           { flag: '_treatmentLoaded',           ov: 'tr_loadingOverlay',            mode: 'flex'  },
+  vaccination:         { flag: '_vaccinationLoaded',         ov: 'vacc_loadingOverlay',          mode: 'flex'  },
+  vaccinationRequests: { flag: '_vrLoaded',                  ov: 'vr_loadingOverlay',            mode: 'flex'  },
+  samples:             { flag: '_samplesLoaded',             ov: 'initialLoadingOverlaySamples', mode: 'flex'  },
+  reports:             { flag: '_reportsLoaded' },
+  comprehensiveReport: { flag: '_comprehensiveReportLoaded', ov: 'rpt_loadingOverlay',           mode: 'block' },
+  financialInventory:  { flag: '_financialInventoryLoaded' },
+  diseaseTracking:     { flag: '_diseaseTrackingLoaded' },
+  animalDistribution:  { flag: '_animalDistributionLoaded',  ov: 'ani_loadingMsg',               mode: 'block' },
+  doctorPerformance:   { flag: '_doctorPerformanceLoaded',   ov: 'dp_loader',                    mode: 'block' }
+};
+
+window._pageLoadQueue   = [];
+window._pageLoadBusy    = false;
+window._pageLoadIdleCbs = [];
+
+function _pageOverlay(pageId, show) {
+  var info = PAGE_LOAD_INFO[pageId];
+  if (!info || !info.ov) return;
+  var el = document.getElementById(info.ov);
+  if (!el) return;
+  if (show) {
+    el.classList.remove('hide');
+    el.classList.remove('hidden');
+    el.style.opacity = '1';
+    el.style.pointerEvents = '';
+    el.style.display = info.mode;
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+function enqueuePageLoad(pageId) {
+  if (!window._initQueueMap || typeof window._initQueueMap[pageId] !== 'function') {
+    console.log('[QUEUE] لا توجد دالة تحميل للصفحة ' + pageId);
+    return;
+  }
+  var info = PAGE_LOAD_INFO[pageId];
+  if (info && info.flag && window[info.flag]) return;       // محمّلة مسبقاً
+  if (window._pageLoadQueue.indexOf(pageId) !== -1) return;  // موجودة في الطابور
+
+  window._pageLoadQueue.push(pageId);
+
+  if (window._pageLoadBusy) {
+    _pageOverlay(pageId, true);
+    showToast('⏳ سيتم تحميل بيانات هذه الصفحة بعد انتهاء الصفحة الجارية', 'warning');
+    console.log('[QUEUE] تأجيل ' + pageId + ' — الطابور: ' + window._pageLoadQueue.join(', '));
+    return;
+  }
+  _drainPageQueue();
+}
+
+function _drainPageQueue() {
+  if (window._pageLoadBusy) return;
+  if (!window._pageLoadQueue.length) { _runPageIdleCbs(); return; }
+
+  var pageId = window._pageLoadQueue.shift();
+  var fn = window._initQueueMap ? window._initQueueMap[pageId] : null;
+  if (typeof fn !== 'function') { setTimeout(_drainPageQueue, 0); return; }
+
+  window._pageLoadBusy = true;
+  console.log('[QUEUE] ▶ بدء تحميل ' + pageId);
+
+  var finish = function () {
+    window._pageLoadBusy = false;
+    _pageOverlay(pageId, false);
+    console.log('[QUEUE] ✔ انتهى تحميل ' + pageId);
+    setTimeout(_drainPageQueue, 0);
+  };
+
+  var result;
+  try {
+    result = fn();
+  } catch (e) {
+    console.warn('[QUEUE] فشل تحميل ' + pageId + ':', e.message);
+    showToast('حدث خطأ أثناء تحميل البيانات: ' + e.message, 'error');
+  }
+
+  if (result && typeof result.then === 'function') {
+    result.then(finish, function (e) {
+      console.warn('[QUEUE] فشل تحميل ' + pageId + ':', (e && e.message) || e);
+      finish();
+    });
+  } else {
+    setTimeout(finish, 0);
+  }
+}
+
+function afterPageLoadIdle(cb) {
+  if (typeof cb !== 'function') return;
+  window._pageLoadIdleCbs.push(cb);
+  _runPageIdleCbs();
+}
+
+function _runPageIdleCbs() {
+  if (window._pageLoadBusy || window._pageLoadQueue.length) return;
+  var cbs = window._pageLoadIdleCbs.splice(0);
+  cbs.forEach(function (cb) { try { cb(); } catch (e) {} });
+}
+
 // ============================================================
 //  showPage — دالة التنقل الرئيسية
 // ============================================================
@@ -1068,25 +1178,14 @@ function showPage(pageId) {
     activeBtn.classList.add("nav-active");
   }
 
-  // ===== تحميل بيانات الصفحة (إذا لم تكن محملة بالفعل) =====
-  if (window._initQueueMap && typeof window._initQueueMap[pageId] === 'function') {
-    try {
-      // استدعاء دالة التحميل (وهي تقوم بالتحقق من العلم الخاص بها)
-      window._initQueueMap[pageId]();
-    } catch (e) {
-      console.warn('[INIT] فشل تحميل ' + pageId + ':', e.message);
-      showToast('حدث خطأ أثناء تحميل البيانات: ' + e.message, 'error');
-    }
-  } else {
-    // إذا لم تكن هناك دالة تحميل محددة، لا نفعل شيئاً
-    console.log('[INIT] لا توجد دالة تحميل للصفحة ' + pageId);
-  }
+  // ===== إدراج تحميل بيانات الصفحة في الطابور (طلب واحد في كل مرة) =====
+  enqueuePageLoad(pageId);
 
-  // فحص العينات المتأخرة (مرة لكل جلسة)
+  // فحص العينات المتأخرة (مرة لكل جلسة) — بعد فراغ طابور التحميل
   if (!window._overdueChecked && typeof foCheckOverdueSamples === 'function' &&
       ['login','settings','home'].indexOf(pageId) === -1) {
     window._overdueChecked = true;
-    setTimeout(foCheckOverdueSamples, 1200);
+    afterPageLoadIdle(function () { setTimeout(foCheckOverdueSamples, 1200); });
   }
 }
 
@@ -1192,12 +1291,11 @@ function unlockNav() {
     reports: function() {
       if (window._reportsLoaded) return;
       window._reportsLoaded = true;
-      if (typeof dim_loadData === 'function') dim_loadData();
-    },
+   if (typeof dim_loadData === 'function') return dim_loadData();    },
     comprehensiveReport: function() {
       if (window._comprehensiveReportLoaded) return;
       window._comprehensiveReportLoaded = true;
-      if (typeof rpt_loadReport === 'function') rpt_loadReport();
+      if (typeof rpt_loadReport === 'function') return rpt_loadReport();
     },
     financialInventory: function() {
       if (window._financialInventoryLoaded) return;
@@ -1208,7 +1306,7 @@ function unlockNav() {
       if (ff) ff.value = today;
       if (ft) ft.value = today;
       fin_isFirstLoad = false;
-      if (typeof fin_loadFinancialData === 'function') fin_loadFinancialData();
+      if (typeof fin_loadFinancialData === 'function') return fin_loadFinancialData();
     },
     diseaseTracking: function() {
       if (window._diseaseTrackingLoaded) return;
@@ -1266,12 +1364,12 @@ function unlockNav() {
           ani_loadData();
         });
       }
-      if (typeof ani_loadData === 'function') ani_loadData();
+      if (typeof ani_loadData === 'function') return ani_loadData();
     },
     doctorPerformance: function() {
       if (window._doctorPerformanceLoaded) return;
       window._doctorPerformanceLoaded = true;
-      if (typeof dp_loadAll === 'function') dp_loadAll();
+     if (typeof dp_loadAll === 'function') return dp_loadAll();
     }
   };
 
@@ -1316,7 +1414,11 @@ function resetAllPagesData() {
   window._animalDistributionLoaded = false;
   window._doctorPerformanceLoaded = false;
 
-  console.log('[resetAllPagesData] ✅ تم إعادة تعيين أعلام التحميل');
+  window._pageLoadQueue   = [];
+  window._pageLoadBusy    = false;
+  window._pageLoadIdleCbs = [];
+
+  console.log('[resetAllPagesData] ✅ تم إعادة تعيين أعلام التحميل والطابور');
 }
 // تأمين التنقل عند التحميل
 window._isLoggedIn = false;
@@ -10603,6 +10705,7 @@ var _u = window._activeApiUrl || REMOTE_SYNC_URL;
 // ─────────────────────────────────────────────────────
 async function remoteSyncPoll() {
   if (!window._isLoggedIn) return;
+  if (window._pageLoadBusy || (window._pageLoadQueue && window._pageLoadQueue.length)) return;
   try {
     var body = JSON.stringify({
       action: "syncGetEvents",
@@ -12341,8 +12444,12 @@ function sendTelegram(text) {
     var _orig = global.unlockNav;
     global.unlockNav = function () {
       _orig.apply(this, arguments);
-      /* تأخير 5 ثوانٍ لضمان اكتمال تحميل النظام */
-      setTimeout(runAllNotifications, 5000);
+      /* الانتظار حتى تنتهي الصفحة الأولى من التحميل ثم الإرسال */
+      if (typeof global.afterPageLoadIdle === "function") {
+        global.afterPageLoadIdle(function () { setTimeout(runAllNotifications, 5000); });
+      } else {
+        setTimeout(runAllNotifications, 5000);
+      }
     };
     global.unlockNav._inPatch = true;
     console.log("[TgNotify] ✅ تم الربط — سيُرسل إشعار بعد تسجيل الدخول");
