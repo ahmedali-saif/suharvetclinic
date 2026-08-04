@@ -1028,6 +1028,9 @@ window.showToast = function(message, type) {
 <script>
 "use strict";
 
+// ============================================================
+//  showPage — دالة التنقل الرئيسية
+// ============================================================
 function showPage(pageId) {
   var publicPages = ['login'];
   
@@ -1048,7 +1051,14 @@ function showPage(pageId) {
     p.classList.remove("active");
   });
   var page = document.getElementById(pageId);
-  if (page) page.classList.add("active");
+  if (page) {
+    page.classList.add("active");
+    // حفظ آخر صفحة تم زيارتها
+    try { localStorage.setItem('lastPage', pageId); } catch(e) {}
+  } else {
+    console.warn('⚠️ الصفحة ' + pageId + ' غير موجودة');
+    return;
+  }
 
   // تحديث تأثير الزر النشط
   document.querySelectorAll("nav button").forEach(function(btn) {
@@ -1059,9 +1069,8 @@ function showPage(pageId) {
     activeBtn.classList.add("nav-active");
   }
 
-  // ===== تحميل بيانات الصفحة (مرة واحدة فقط) =====
+  // تحميل بيانات الصفحة (مرة واحدة فقط)
   if (window._initQueueMap && typeof window._initQueueMap[pageId] === 'function') {
-    // استدعِ دالة التحميل مع منع التكرار (الدوال نفسها تتحقق من الأعلام)
     try {
       window._initQueueMap[pageId]();
     } catch (e) {
@@ -1076,166 +1085,14 @@ function showPage(pageId) {
     setTimeout(foCheckOverdueSamples, 1200);
   }
 }
-  
-if (pageId === 'samples' && !window._samplesInitialized) {
-    window._samplesInitialized = true;
-    if (typeof foinit === 'function') foinit();
-  }
-  // تحميل فوري لبيانات الصفحة إن لم تكن قد حُمِّلت من الطابور بعد
-  if (window._initQueueMap && typeof window._initQueueMap[pageId] === 'function') {
-    try { window._initQueueMap[pageId](); }
-    catch (e) { console.warn('[INIT] ' + pageId + ':', e.message); }
-  }
-}
-  function resetAllPagesData() {
-  // مسح جدول العلاج اليومي
-  var trTable = document.getElementById('tr_dataTable');
-  if (trTable) trTable.innerHTML = '';
-  
-  // مسح حقول نموذج العلاج
-  var trInputs = document.querySelectorAll('#treatment input, #treatment select, #treatment textarea');
-  trInputs.forEach(function(el) {
-    if (el.type !== 'button' && el.type !== 'submit') el.value = '';
-  });
-  document.querySelectorAll('#treatment .diagnosis-row input').forEach(function(el){ el.value=''; });
-  document.querySelectorAll('#treatment .drug-row input').forEach(function(el){ el.value=''; });
-  
-  // مسح جداول المربي
-  var bdBody = document.getElementById('bd_searchResultsBody');
-  if (bdBody) bdBody.innerHTML = '';
-  var bdHeader = document.getElementById('bd_searchResultsHeader');
-  if (bdHeader) bdHeader.innerHTML = '';
-  var bdContainer = document.getElementById('bd_searchResultsContainer');
-  if (bdContainer) bdContainer.style.display = 'none';
-  document.querySelectorAll('#breeder input:not([type=button]), #breeder select, #breeder textarea').forEach(function(el){ el.value=''; });
-  
-  // مسح نموذج التحصين
-  document.querySelectorAll('#vaccination input:not([type=button]), #vaccination select, #vaccination textarea').forEach(function(el){ el.value=''; });
-  var vaccDisplay = document.getElementById('vacc_vaccinationDataDisplay');
-  if (vaccDisplay) vaccDisplay.innerHTML = '';
-  
-  // مسح جدول طلبات التحصين
-  var vrBody = document.getElementById('vr_searchResultsBody');
-  if (vrBody) vrBody.innerHTML = '';
-  var vrTable = document.getElementById('vr_searchResultsTable');
-  if (vrTable) vrTable.style.display = 'none';
-  window.vr_allData = [];
-  window.vr_dataLoaded = false;
-  
-  // مسح العينات
-  document.querySelectorAll('#samples input:not([type=button]), #samples select, #samples textarea').forEach(function(el){ el.value=''; });
-  var samplesContainer = document.getElementById('searchResultsContainer');
-  if (samplesContainer) samplesContainer.innerHTML = '<p style="text-align:center;color:#666;padding:20px">أدخل رقم الهاتف أو رقم العينة واضغط بحث</p>';
-  
-  // مسح الجرد المالي
-  var finBody = document.getElementById('fin_searchResultsBody');
-  if (finBody) finBody.innerHTML = '';
-  var finTotal = document.getElementById('fin_annualTotal');
-  if (finTotal) finTotal.value = '';
-  
-  // مسح تقرير الأدوية
-  var dimBody = document.getElementById('dim_searchResultsBody');
-  if (dimBody) dimBody.innerHTML = '';
-  
-  // مسح تتبع المرض
-  var dtrBody = document.getElementById('dtr_searchResultsBody');
-  if (dtrBody) dtrBody.innerHTML = '';
-  if (window.dtr_chartInstance) { 
-    try { window.dtr_chartInstance.destroy(); window.dtr_chartInstance = null; } catch(e) {}
-  }
-  
-  // مسح توزيع الحيوانات
-  var aniBody = document.getElementById('ani_searchResultsBody');
-  if (aniBody) aniBody.innerHTML = '';
-  var aniContainer = document.getElementById('ani_searchResultsContainer');
-  if (aniContainer) aniContainer.style.display = 'none';
-  
-  // مسح التقرير الشامل
-  ['rpt_tb1','rpt_tb2','rpt_tb3','rpt_tb4','rpt_tb5'].forEach(function(id){
-    var el = document.getElementById(id);
-    if (el) el.innerHTML = '';
-  });
-  
-  // مسح أداء الأطباء
-  window.dp_RAW = { treat: [], vacc: [], sample: [] };
-  var dpTables = ['t_tb','v_tb','s_tb'];
-  dpTables.forEach(function(id){
-    var el = document.getElementById(id);
-    if (el) el.innerHTML = '';
-  });
-  
-  // مسح datalists القوائم المنسدلة
-  ['tr_phoneList','tr_diseaseList','tr_drugList','tr_dataEntryList','tr_dataUpdaterList',
-   'bd_phoneList','bd_regionList','bd_dataEntryList','bd_dataUpdaterList',
-   'vacc_phoneList','vacc_dataEntryList','vacc_dataUpdaterList',
-   'phoneList','dataEntryList','dataUpdaterList','testList','sampleTypeList'].forEach(function(id){
-    var dl = document.getElementById(id);
-    if (dl) dl.innerHTML = '';
-  });
-  
-  // مسح شارة الحالات غير المكتملة
-  var incBadge = document.getElementById('tr_incompleteCountBadge');
-  if (incBadge) incBadge.style.display = 'none';
-  var incText = document.getElementById('tr_incompleteCountText');
-  if (incText) incText.textContent = '0 حالة غير مكتملة';
-  
-  // مسح إحصاءات العينات
-  var uniqueDisplay = document.getElementById('uniqueCountDisplay');
-  if (uniqueDisplay) uniqueDisplay.textContent = '0';
-  var lastSample = document.getElementById('lastSampleDisplay');
-  if (lastSample) lastSample.textContent = '—';
-  
-  // إعادة تعيين الكاش
-  
-  console.log('[resetAllPagesData] ✅ تم مسح جميع بيانات الصفحات');
-  window._breederInitialized = false;
-  window._treatmentInitialized = false;
-  window._vaccinationInitialized = false;
-  window._vrInitialized = false;
-  window._samplesInitialized = false;
-  window._pageLoaded = {};
-  console.log('[resetAllPagesData] ✅ تم إعادة تعيين أعلام التحميل');
-}
 
 // ============================================================
-//  unlockNav() – تُستدعى بعد نجاح تسجيل الدخول
+//  unlockNav — تفعيل الأزرار والصلاحيات بعد تسجيل الدخول
 // ============================================================
-function lockNav() {
-  window._isLoggedIn = false;
-  window._pageLoaded   = {};
-  window._initQueueMap = {};
-  if (window.PageGate) window.PageGate.resetAll();
-  window._treatmentInitialized = false;
-  window._vaccinationInitialized = false;
-  window._vrInitialized = false;
-  window._breederInitialized = false;
-  window._samplesInitialized = false;
-  if (typeof bd_clearForm === 'function') bd_clearForm();
-  resetAllPagesData();
-
-  // إخفاء جميع الأزرار باستثناء زر تسجيل الدخول
-  document.querySelectorAll("nav button").forEach(function(btn) {
-    var onclick = btn.getAttribute('onclick') || '';
-    if (onclick.indexOf("'login'") === -1) {
-      btn.disabled = true;
-      btn.style.opacity = '0.4';
-      btn.style.cursor = 'not-allowed';
-      // إخفاء باستخدام !important لتجاوز أي CSS
-      btn.style.setProperty('display', 'none', 'important');
-    } else {
-      // إظهار زر تسجيل الدخول
-      btn.disabled = false;
-      btn.style.opacity = '';
-      btn.style.cursor = '';
-      btn.style.setProperty('display', 'inline-block', 'important');
-    }
-  });
-}
-
 function unlockNav() {
   window._isLoggedIn = true;
 
-  // إظهار جميع الأزرار مؤقتاً
+  // 1. إظهار جميع الأزرار مؤقتاً
   document.querySelectorAll("nav button").forEach(function(btn) {
     btn.disabled = false;
     btn.style.opacity = '';
@@ -1248,7 +1105,7 @@ function unlockNav() {
     }
   });
 
-  // تطبيق صلاحيات المستخدم
+  // 2. تطبيق صلاحيات المستخدم
   window._userAllowedPages = null;
   var username = window._currentUser || '';
   if (username && typeof PERM !== 'undefined') {
@@ -1270,7 +1127,8 @@ function unlockNav() {
     });
   }
 
-  // تعبئة خريطة دوال التحميل (دون تشغيلها فوراً)
+  // 3. تجهيز خريطة تحميل الصفحات (تُستدعى عند الدخول إلى كل صفحة لأول مرة)
+  window._pageLoaded = window._pageLoaded || {};
   window._initQueueMap = {
     breeder: function () {
       if (window._breederInitialized) return;
@@ -1303,20 +1161,17 @@ function unlockNav() {
       if (typeof foinit === 'function') foinit();
     },
     reports: function () {
-      if (window._pageLoaded && window._pageLoaded.reports) return;
-      if (!window._pageLoaded) window._pageLoaded = {};
+      if (window._pageLoaded.reports) return;
       window._pageLoaded.reports = true;
       if (typeof dim_loadData === 'function') dim_loadData();
     },
     comprehensiveReport: function () {
-      if (window._pageLoaded && window._pageLoaded.comprehensiveReport) return;
-      if (!window._pageLoaded) window._pageLoaded = {};
+      if (window._pageLoaded.comprehensiveReport) return;
       window._pageLoaded.comprehensiveReport = true;
       if (typeof rpt_loadReport === 'function') rpt_loadReport();
     },
     financialInventory: function () {
-      if (window._pageLoaded && window._pageLoaded.financialInventory) return;
-      if (!window._pageLoaded) window._pageLoaded = {};
+      if (window._pageLoaded.financialInventory) return;
       window._pageLoaded.financialInventory = true;
       var today = fin_localToday();
       var ff = document.getElementById('fin_dateFrom');
@@ -1327,8 +1182,7 @@ function unlockNav() {
       if (typeof fin_loadFinancialData === 'function') fin_loadFinancialData();
     },
     diseaseTracking: function () {
-      if (window._pageLoaded && window._pageLoaded.diseaseTracking) return;
-      if (!window._pageLoaded) window._pageLoaded = {};
+      if (window._pageLoaded.diseaseTracking) return;
       window._pageLoaded.diseaseTracking = true;
       var sel = document.getElementById('dtr_diseaseSelect');
       if (sel && !sel._dtrBound) {
@@ -1348,8 +1202,7 @@ function unlockNav() {
       }).catch(function(e){ console.warn(e); });
     },
     animalDistribution: function () {
-      if (window._pageLoaded && window._pageLoaded.animalDistribution) return;
-      if (!window._pageLoaded) window._pageLoaded = {};
+      if (window._pageLoaded.animalDistribution) return;
       window._pageLoaded.animalDistribution = true;
       var af = document.getElementById('ani_dateFrom');
       var at = document.getElementById('ani_dateTo');
@@ -1387,8 +1240,32 @@ function unlockNav() {
     }
   };
 
-  // لا نقوم بتحميل أي صفحة فورياً، بل ننتظر حتى ينقر المستخدم عليها.
-  console.log('[INIT] ✅ تم تجهيز خريطة التحميل، الصفحات تُحمَّل عند أول دخول.');
+  // 4. عرض الصفحة الافتراضية بعد تسجيل الدخول
+  var defaultPage = 'treatment'; // أو 'breeder' حسب رغبتك
+  // استعادة آخر صفحة تم زيارتها (إذا كانت محفوظة)
+  try {
+    var savedPage = localStorage.getItem('lastPage');
+    if (savedPage && document.getElementById(savedPage)) {
+      defaultPage = savedPage;
+    }
+  } catch(e) {}
+  
+  // تأكد من أن الصفحة مسموحة قبل عرضها
+  if (window._userAllowedPages && window._userAllowedPages.length > 0) {
+    if (window._userAllowedPages.indexOf(defaultPage.toLowerCase()) === -1) {
+      // إذا كانت الصفحة غير مسموحة، استخدم أول صفحة مسموحة
+      var firstAllowed = window._userAllowedPages[0];
+      if (firstAllowed && document.getElementById(firstAllowed)) {
+        defaultPage = firstAllowed;
+      } else {
+        defaultPage = 'home'; // الصفحة الرئيسية كحل أخير
+      }
+    }
+  }
+
+  // عرض الصفحة
+  showPage(defaultPage);
+  console.log('[unlockNav] ✅ تم تسجيل الدخول وعرض الصفحة: ' + defaultPage);
 }
 // تأمين التنقل عند التحميل
 window._isLoggedIn = false;
