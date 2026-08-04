@@ -1053,7 +1053,6 @@ function showPage(pageId) {
   var page = document.getElementById(pageId);
   if (page) {
     page.classList.add("active");
-    // حفظ آخر صفحة تم زيارتها
     try { localStorage.setItem('lastPage', pageId); } catch(e) {}
   } else {
     console.warn('⚠️ الصفحة ' + pageId + ' غير موجودة');
@@ -1069,13 +1068,18 @@ function showPage(pageId) {
     activeBtn.classList.add("nav-active");
   }
 
-  // تحميل بيانات الصفحة (مرة واحدة فقط)
+  // ===== تحميل بيانات الصفحة (إذا لم تكن محملة بالفعل) =====
   if (window._initQueueMap && typeof window._initQueueMap[pageId] === 'function') {
     try {
+      // استدعاء دالة التحميل (وهي تقوم بالتحقق من العلم الخاص بها)
       window._initQueueMap[pageId]();
     } catch (e) {
       console.warn('[INIT] فشل تحميل ' + pageId + ':', e.message);
+      showToast('حدث خطأ أثناء تحميل البيانات: ' + e.message, 'error');
     }
+  } else {
+    // إذا لم تكن هناك دالة تحميل محددة، لا نفعل شيئاً
+    console.log('[INIT] لا توجد دالة تحميل للصفحة ' + pageId);
   }
 
   // فحص العينات المتأخرة (مرة لكل جلسة)
@@ -1092,7 +1096,7 @@ function showPage(pageId) {
 function unlockNav() {
   window._isLoggedIn = true;
 
-  // 1. إظهار جميع الأزرار مؤقتاً
+  // إظهار جميع الأزرار مؤقتاً
   document.querySelectorAll("nav button").forEach(function(btn) {
     btn.disabled = false;
     btn.style.opacity = '';
@@ -1105,7 +1109,7 @@ function unlockNav() {
     }
   });
 
-  // 2. تطبيق صلاحيات المستخدم
+  // تطبيق صلاحيات المستخدم
   window._userAllowedPages = null;
   var username = window._currentUser || '';
   if (username && typeof PERM !== 'undefined') {
@@ -1127,52 +1131,77 @@ function unlockNav() {
     });
   }
 
-  // 3. تجهيز خريطة تحميل الصفحات (تُستدعى عند الدخول إلى كل صفحة لأول مرة)
-  window._pageLoaded = window._pageLoaded || {};
+  // ===== تهيئة دوال التحميل لكل صفحة (دون تنفيذها) =====
   window._initQueueMap = {
-    breeder: function () {
-      if (window._breederInitialized) return;
-      window._breederInitialized = true;
+    breeder: function() {
+      if (window._breederLoaded) return;
+      window._breederLoaded = true;
+      var ov = document.getElementById('bd_pageLoadingOverlay');
+      if (ov) ov.style.display = 'flex';
       bd_API_URL = window._activeApiUrl || "";
-      if (typeof bd_init === 'function') bd_init();
+      if (typeof bd_init === 'function') {
+        return bd_init().finally(function() {
+          if (ov) ov.style.display = 'none';
+        });
+      }
     },
-    treatment: function () {
-      if (window._treatmentInitialized) return;
-      window._treatmentInitialized = true;
+    treatment: function() {
+      if (window._treatmentLoaded) return;
+      window._treatmentLoaded = true;
       var ov = document.getElementById('tr_loadingOverlay');
-      if (ov) ov.style.display = 'none';
-      if (typeof trinit === 'function') trinit();
+      if (ov) ov.style.display = 'flex';
+      if (typeof trinit === 'function') {
+        return trinit().finally(function() {
+          if (ov) ov.style.display = 'none';
+        });
+      }
     },
-    vaccination: function () {
-      if (window._vaccinationInitialized) return;
-      window._vaccinationInitialized = true;
+    vaccination: function() {
+      if (window._vaccinationLoaded) return;
+      window._vaccinationLoaded = true;
       var ov = document.getElementById('vacc_loadingOverlay');
-      if (ov) ov.style.display = 'none';
-      if (typeof vaccInit === 'function') vaccInit();
+      if (ov) ov.style.display = 'flex';
+      if (typeof vaccInit === 'function') {
+        return vaccInit().finally(function() {
+          if (ov) ov.style.display = 'none';
+        });
+      }
     },
-    vaccinationRequests: function () {
-      if (window._vrInitialized) return;
-      window._vrInitialized = true;
-      if (typeof vr_loadData === 'function') vr_loadData();
+    vaccinationRequests: function() {
+      if (window._vrLoaded) return;
+      window._vrLoaded = true;
+      var ov = document.getElementById('vr_loadingOverlay');
+      if (ov) ov.style.display = 'flex';
+      if (typeof vr_loadData === 'function') {
+        return vr_loadData().finally(function() {
+          if (ov) ov.style.display = 'none';
+        });
+      }
     },
-    samples: function () {
-      if (window._samplesInitialized) return;
-      window._samplesInitialized = true;
-      if (typeof foinit === 'function') foinit();
+    samples: function() {
+      if (window._samplesLoaded) return;
+      window._samplesLoaded = true;
+      var ov = document.getElementById('initialLoadingOverlaySamples');
+      if (ov) ov.style.display = 'flex';
+      if (typeof foinit === 'function') {
+        return foinit().finally(function() {
+          if (ov) ov.style.display = 'none';
+        });
+      }
     },
-    reports: function () {
-      if (window._pageLoaded.reports) return;
-      window._pageLoaded.reports = true;
+    reports: function() {
+      if (window._reportsLoaded) return;
+      window._reportsLoaded = true;
       if (typeof dim_loadData === 'function') dim_loadData();
     },
-    comprehensiveReport: function () {
-      if (window._pageLoaded.comprehensiveReport) return;
-      window._pageLoaded.comprehensiveReport = true;
+    comprehensiveReport: function() {
+      if (window._comprehensiveReportLoaded) return;
+      window._comprehensiveReportLoaded = true;
       if (typeof rpt_loadReport === 'function') rpt_loadReport();
     },
-    financialInventory: function () {
-      if (window._pageLoaded.financialInventory) return;
-      window._pageLoaded.financialInventory = true;
+    financialInventory: function() {
+      if (window._financialInventoryLoaded) return;
+      window._financialInventoryLoaded = true;
       var today = fin_localToday();
       var ff = document.getElementById('fin_dateFrom');
       var ft = document.getElementById('fin_dateTo');
@@ -1181,34 +1210,35 @@ function unlockNav() {
       fin_isFirstLoad = false;
       if (typeof fin_loadFinancialData === 'function') fin_loadFinancialData();
     },
-    diseaseTracking: function () {
-      if (window._pageLoaded.diseaseTracking) return;
-      window._pageLoaded.diseaseTracking = true;
+    diseaseTracking: function() {
+      if (window._diseaseTrackingLoaded) return;
+      window._diseaseTrackingLoaded = true;
       var sel = document.getElementById('dtr_diseaseSelect');
       if (sel && !sel._dtrBound) {
         sel._dtrBound = true;
-        sel.addEventListener('change', function () {
+        sel.addEventListener('change', function() {
           dtr_userClick = true;
           dtr_loadData();
         });
       }
-      if (typeof dtr_loadDiseaseList !== 'function') return;
-      dtr_loadDiseaseList().then(function () {
-        var f = document.getElementById('dtr_dateFrom');
-        var t = document.getElementById('dtr_dateTo');
-        if (f) f.value = '';
-        if (t) t.value = '';
-        if (typeof dtr_loadData === 'function') dtr_loadData();
-      }).catch(function(e){ console.warn(e); });
+      if (typeof dtr_loadDiseaseList === 'function') {
+        return dtr_loadDiseaseList().then(function() {
+          var f = document.getElementById('dtr_dateFrom');
+          var t = document.getElementById('dtr_dateTo');
+          if (f) f.value = '';
+          if (t) t.value = '';
+          if (typeof dtr_loadData === 'function') dtr_loadData();
+        });
+      }
     },
-    animalDistribution: function () {
-      if (window._pageLoaded.animalDistribution) return;
-      window._pageLoaded.animalDistribution = true;
+    animalDistribution: function() {
+      if (window._animalDistributionLoaded) return;
+      window._animalDistributionLoaded = true;
       var af = document.getElementById('ani_dateFrom');
       var at = document.getElementById('ani_dateTo');
       if (af && !af._aniBound) {
         af._aniBound = true;
-        af.addEventListener('change', function () {
+        af.addEventListener('change', function() {
           var to = document.getElementById('ani_dateTo').value;
           if (!to) return;
           if (this.value > to) {
@@ -1221,7 +1251,7 @@ function unlockNav() {
       }
       if (at && !at._aniBound) {
         at._aniBound = true;
-        at.addEventListener('change', function () {
+        at.addEventListener('change', function() {
           var from = document.getElementById('ani_dateFrom').value;
           if (!from) {
             showToast('⚠️ الرجاء إدخال تاريخ البداية أولاً', 'warning');
@@ -1237,33 +1267,35 @@ function unlockNav() {
         });
       }
       if (typeof ani_loadData === 'function') ani_loadData();
+    },
+    doctorPerformance: function() {
+      if (window._doctorPerformanceLoaded) return;
+      window._doctorPerformanceLoaded = true;
+      if (typeof dp_loadAll === 'function') dp_loadAll();
     }
   };
 
-  // 4. عرض الصفحة الافتراضية بعد تسجيل الدخول
-  var defaultPage = 'treatment'; // أو 'breeder' حسب رغبتك
-  // استعادة آخر صفحة تم زيارتها (إذا كانت محفوظة)
+  // تعيين الصفحة الافتراضية بعد تسجيل الدخول (ولكن لا نقوم بتحميلها هنا، بل نعرضها فقط)
+  var defaultPage = 'treatment';
   try {
     var savedPage = localStorage.getItem('lastPage');
     if (savedPage && document.getElementById(savedPage)) {
       defaultPage = savedPage;
     }
   } catch(e) {}
-  
-  // تأكد من أن الصفحة مسموحة قبل عرضها
+
   if (window._userAllowedPages && window._userAllowedPages.length > 0) {
     if (window._userAllowedPages.indexOf(defaultPage.toLowerCase()) === -1) {
-      // إذا كانت الصفحة غير مسموحة، استخدم أول صفحة مسموحة
       var firstAllowed = window._userAllowedPages[0];
       if (firstAllowed && document.getElementById(firstAllowed)) {
         defaultPage = firstAllowed;
       } else {
-        defaultPage = 'home'; // الصفحة الرئيسية كحل أخير
+        defaultPage = 'home';
       }
     }
   }
 
-  // عرض الصفحة
+  // عرض الصفحة بدون تحميل بياناتها (سيتم التحميل عند الدخول الفعلي)
   showPage(defaultPage);
   console.log('[unlockNav] ✅ تم تسجيل الدخول وعرض الصفحة: ' + defaultPage);
 }
@@ -4208,14 +4240,12 @@ function trinit() {
   trbindEvents();
   document.getElementById("tr_financialDate").value = new Date().toLocaleDateString("en-CA");
   trloadIncompleteCount();
-  
-  // ④ تحديث دوري كل دقيقتين
   setInterval(trloadIncompleteCount, 120000);
   
   const overlay = document.getElementById("tr_loadingOverlay");
   if (overlay) overlay.style.display = "flex";
 
-return Promise.all([trloadDropdowns(), trloadData()])
+  return Promise.all([trloadDropdowns(), trloadData()])
     .catch(err => trshowMessage("خطأ في التحميل: " + err.message, true))
     .finally(() => { if (overlay) overlay.style.display = "none"; });
 }
