@@ -367,6 +367,14 @@ button:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 3px 8px
 
 .loading-dots::after { content: ''; animation: dots 1.5s steps(4, end) infinite; }
 
+/* ===== توحيد شاشات التحميل — تعطيل شاشات الصفحات المنفصلة ===== */
+#tr_loadingOverlay,
+#vacc_loadingOverlay,
+#bd_pageLoadingOverlay,
+#vr_loadingOverlay,
+#initialLoadingOverlaySamples,
+#rpt_loadingOverlay { display: none !important; }
+
 #vaccination { position: relative; min-height: 200px; }
 #rpt_loadingOverlay {
   display: none;
@@ -1070,15 +1078,6 @@ function showPage(pageId) {
     setTimeout(foCheckOverdueSamples, 1200);
   }
   
-if (pageId === 'samples' && !window._samplesInitialized) {
-    window._samplesInitialized = true;
-    if (typeof foinit === 'function') foinit();
-  }
-  // تحميل فوري لبيانات الصفحة إن لم تكن قد حُمِّلت من الطابور بعد
-  if (window._initQueueMap && typeof window._initQueueMap[pageId] === 'function') {
-    try { window._initQueueMap[pageId](); }
-    catch (e) { console.warn('[INIT] ' + pageId + ':', e.message); }
-  }
 }
   function resetAllPagesData() {
   // مسح جدول العلاج اليومي
@@ -1373,16 +1372,24 @@ function unlockNav() {
 
   initQueue.forEach(function (it) { window._initQueueMap[it.key] = it.fn; });
 
-(function runNext(i) {
+var _pgFailed = [];
+  (function runNext(i) {
     if (!window._isLoggedIn) return;
     if (i >= initQueue.length) {
-      console.log('[INIT] ✅ اكتمل تحميل جميع الصفحات');
+      window.PageGate.boot.finish(_pgFailed);
+      console.log('[INIT] ✅ اكتمل تحميل جميع الصفحات — تعذّر: ' + (_pgFailed.join(', ') || 'لا شيء'));
       return;
     }
     var key  = initQueue[i].key;
-    var next = function () { setTimeout(function () { runNext(i + 1); }, 500); };
-    window.PageGate.load(key).then(next, function (e) {
+    window.PageGate.boot.update(i, initQueue.length, key, false);
+    var next = function () { setTimeout(function () { runNext(i + 1); }, 300); };
+    window.PageGate.load(key).then(function () {
+      window.PageGate.boot.update(i + 1, initQueue.length, key, false);
+      next();
+    }, function (e) {
+      _pgFailed.push(key);
       console.warn('[INIT] ⚠️ فشل تحميل ' + key + ': ' + (e.message || e));
+      window.PageGate.boot.update(i + 1, initQueue.length, key, true);
       next();
     });
   })(0);
@@ -1412,11 +1419,105 @@ lockNav();
     samples:'_samplesInitialized'
   };
 
-  var PUBLIC   = ['login','home','settings','dashboard','doctorPerformance'];
+var PUBLIC   = ['login','home','settings','dashboard','doctorPerformance'];
   var TIMEOUT  = 30000;
   var state    = {};   /* pageId → ready | loading | error */
   var pending  = {};
   var _orig    = global.showPage;
+
+  /* ── أدوات التحقق ── */
+  function optCount(id) {
+    var dl = document.getElementById(id);
+    return dl ? dl.querySelectorAll('option').length : 0;
+  }
+  function rowCount(id) {
+    var el = document.getElementById(id);
+    return el ? el.querySelectorAll('tr').length : 0;
+  }
+
+  /* ── الشرط الفعلي لاعتبار الصفحة "محمّلة" ── */
+  var VERIFY = {
+    breeder: function () { return optCount('bd_phoneList') > 0; },
+    treatment: function () {
+      var t = document.getElementById('tr_dataTable');
+      return optCount('tr_phoneList') > 0 && !!t && t.innerHTML.trim() !== '';
+    },
+    vaccination:         function () { return optCount('vacc_phoneList') > 0; },
+    vaccinationRequests: function () { return global.vr_dataLoaded === true; },
+    samples:             function () { return optCount('phoneList') > 0; },
+    reports:             function () { return rowCount('dim_searchResultsBody') > 0; },
+    comprehensiveReport: function () { return global.rpt_D != null; },
+    financialInventory:  function () { return rowCount('fin_searchResultsBody') > 0; },
+    diseaseTracking:     function () { return rowCount('dtr_searchResultsFoot') > 0; },
+    animalDistribution:  function () {
+      var c = document.getElementById('ani_searchResultsContainer');
+      return !!c && c.style.display === 'block';
+    }
+  };
+
+  /* ينتظر وصول البيانات فعلياً بعد انتهاء دالة التحميل */
+  function waitVerified(id) {
+    var fn = VERIFY[id];
+    if (typeof fn !== 'function') return Promise.resolve(true);
+    return new Promise(function (resolve, reject) {
+      var tries = 0;
+      (function tick() {
+        var ok = false;
+        try { ok = !!fn(); } catch (e) { ok = false; }
+        if (ok) return resolve(true);
+        if (++tries > 40) return reject(new Error('انتهى الطلب لكن البيانات لم تصل إلى الصفحة'));
+        setTimeout(tick, 250);
+      })();
+    });
+  }
+
+  /* ── شريط الحالة الموحّد بعد تسجيل الدخول ── */
+  var bootBox = null;
+  function bootUI() {
+    if (bootBox) return bootBox;
+    bootBox = document.createElement('div');
+    bootBox.id = 'pg_boot';
+    bootBox.style.cssText =
+      'position:fixed;bottom:14px;right:14px;z-index:99980;direction:rtl;' +
+      'font-family:Tahoma,Arial,sans-serif;background:#fff;border:2px solid #00b8d9;' +
+      'border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.18);padding:10px 14px;min-width:235px;';
+    bootBox.innerHTML =
+      '<div id="pg_bootTitle" style="font-size:12.5px;font-weight:bold;color:#00b8d9;margin-bottom:6px;"></div>' +
+      '<div style="background:#e0e0e0;border-radius:20px;height:7px;overflow:hidden;">' +
+        '<div id="pg_bootBar" style="height:100%;width:0%;background:#2bb673;border-radius:20px;transition:width .3s;"></div>' +
+      '</div>' +
+      '<div id="pg_bootSub" style="font-size:11px;color:#666;margin-top:5px;"></div>';
+    document.body.appendChild(bootBox);
+    return bootBox;
+  }
+  function bootUpdate(done, total, key, failed) {
+    bootUI();
+    document.getElementById('pg_bootTitle').textContent = '⏳ تحميل الصفحات (' + done + '/' + total + ')';
+    document.getElementById('pg_bootBar').style.width = Math.round(done / total * 100) + '%';
+    document.getElementById('pg_bootSub').textContent =
+      (key ? (LABELS[key] || key) : '') + (failed ? ' — ⚠️ لم تكتمل' : '');
+  }
+  function bootFinish(failedList) {
+    bootUI();
+    var t = document.getElementById('pg_bootTitle');
+    var s = document.getElementById('pg_bootSub');
+    var b = document.getElementById('pg_bootBar');
+    b.style.width = '100%';
+    if (failedList && failedList.length) {
+      b.style.background = '#e67e22';
+      t.textContent = '⚠️ اكتمل التحميل مع تعذّر ' + failedList.length + ' صفحة';
+      s.textContent = failedList.map(function (k) { return LABELS[k] || k; }).join('، ');
+    } else {
+      t.textContent = '✅ تم تحميل جميع الصفحات';
+      s.textContent = 'جميع البيانات جاهزة';
+    }
+    setTimeout(function () {
+      if (!bootBox) return;
+      bootBox.style.transition = 'opacity .5s';
+      bootBox.style.opacity = '0';
+      setTimeout(function () { if (bootBox) { bootBox.remove(); bootBox = null; } }, 600);
+    }, (failedList && failedList.length) ? 6000 : 2500);
+  }
 
   function loaderFor(id) {
     return (global._initQueueMap && global._initQueueMap[id]) || null;
@@ -1509,7 +1610,9 @@ lockNav();
         if (!done) { done = true; reject(new Error('انتهت المهلة (30 ثانية) — الخادم لم يستجب')); }
       }, TIMEOUT);
 
-      Promise.resolve().then(fn).then(function () {
+Promise.resolve().then(fn).then(function () {
+        return waitVerified(id);
+      }).then(function () {
         if (done) return; done = true; clearTimeout(timer); resolve(true);
       }, function (e) {
         if (done) return; done = true; clearTimeout(timer); reject(e);
@@ -1525,10 +1628,18 @@ lockNav();
     return pending[id];
   }
 
-  global.PageGate = {
+global.PageGate = {
     load: load,
     isReady: function (id) { return state[id] === 'ready'; },
-    resetAll: function () { state = {}; pending = {}; hide(); }
+    verify: function (id) {
+      var f = VERIFY[id];
+      try { return typeof f === 'function' ? !!f() : true; } catch (e) { return false; }
+    },
+    boot: { update: bootUpdate, finish: bootFinish },
+    resetAll: function () {
+      state = {}; pending = {}; hide();
+      if (bootBox) { bootBox.remove(); bootBox = null; }
+    }
   };
 
   /* ── اعتراض showPage ── */
