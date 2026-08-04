@@ -1375,7 +1375,9 @@ w._pageLoadQueue   = [];
     ],
     breeder: [
       { sel: '#bd_phoneList option',       label: 'قائمة أرقام الهواتف' },
-      { sel: '#bd_dataEntryList option',   label: 'قائمة مدخلي البيانات' }
+      { sel: '#bd_regionList option',      label: 'قائمة المناطق' },
+      { sel: '#bd_dataEntryList option',   label: 'قائمة مدخلي البيانات' },
+      { sel: '#bd_dataUpdaterList option', label: 'قائمة معدّلي البيانات' }
     ],
     vaccination: [
       { sel: '#vacc_phoneList option',       label: 'قائمة أرقام الهواتف' },
@@ -5205,48 +5207,14 @@ var safeHide = setTimeout(function(){ bd_hideLoading(); }, 5000);
     .then(function(){ clearTimeout(safeHide); bd_hideLoading(); })
     .catch(function(){ clearTimeout(safeHide); bd_hideLoading(); });
 }
-async function bd__directApi(action, payload, timeoutMs) {
-  var url = window._activeApiUrl || bd_API_URL || window.UNIFIED_API_URL;
-  if (!url) throw new Error("رابط الخدمة غير مُعدّ");
-  var body = JSON.stringify(Object.assign({ action: action }, payload || {}));
-
-  var ctrl = (typeof AbortController !== "undefined") ? new AbortController() : null;
-  var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, timeoutMs || 60000);
-
-  try {
-    var opts = {
-      method: "POST", mode: "cors",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: body, redirect: "follow"
-    };
-    if (ctrl) opts.signal = ctrl.signal;
-    var r = await fetch(url, opts);
-    if (!r.ok) throw new Error("HTTP " + r.status);
-    return await r.json();
-  } catch (e) {
-    if (e && e.name === "AbortError") throw new Error("انتهت المهلة — الخادم مشغول، أعد المحاولة");
-    throw e;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 async function bd_fetchAll() {
   var container = document.getElementById("bd_searchResultsContainer");
   var tbody = document.getElementById("bd_searchResultsBody");
   var theader = document.getElementById("bd_searchResultsHeader");
   container.style.display = "block";
-
-  /* انتظر انتهاء تحميل الصفحات حتى لا يتصادم الطلب مع طلبات الطابور */
-  if (window._pageLoadBusy && typeof window.afterPageLoadIdle === "function") {
-    tbody.innerHTML = "<tr><td colspan='100' style='text-align:center'>⏳ في انتظار انتهاء تحميل الصفحة...</td></tr>";
-    await new Promise(function (rs) { window.afterPageLoadIdle(rs); });
-  }
-
   tbody.innerHTML = "<tr><td colspan='100' style='text-align:center'>⏳ جاري جلب الكل...</td></tr>";
   try {
-    var res = await bd__directApi("bd_getAllBreeders", {}, 90000);
-    console.log("[bd_fetchAll] response:", res);
+    var res = await bd_callApi("bd_getAllBreeders");
     if (!res || !res.success || !res.data || !res.data.length) {
       tbody.innerHTML = "<tr><td colspan='100' style='text-align:center'>لا توجد بيانات</td></tr>";
       return;
@@ -5263,11 +5231,8 @@ async function bd_fetchAll() {
     bd_showMessage("✅ تم جلب " + res.data.length + " مربي", false);
     var countBadge = document.getElementById("bd_fetchAllCount");
     if (countBadge) { countBadge.textContent = res.data.length + " مربي"; countBadge.style.display = "inline-block"; countBadge.setAttribute("data-visible","1"); }
-} catch(err) {
-    console.warn("[bd_fetchAll] خطأ:", err);
-    tbody.innerHTML = "<tr><td colspan='100' style='text-align:center;color:red'>❌ خطأ: "
-      + (err && err.message ? err.message : err) + "</td></tr>";
-    bd_showMessage("❌ فشل جلب المربين: " + (err && err.message ? err.message : err), true);
+  } catch(err) {
+    tbody.innerHTML = "<tr><td colspan='100' style='text-align:center;color:red'>خطأ: "+err.message+"</td></tr>";
   }
 }
 /* ══════════════════════════════════════════════════════════
