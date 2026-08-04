@@ -1357,9 +1357,107 @@ lockNav();
     doctorPerformance:   { flag: '_doctorPerformanceLoaded',   ov: 'dp_loader',                    mode: 'block' }
   };
 
-  w._pageLoadQueue   = [];
+w._pageLoadQueue   = [];
   w._pageLoadBusy    = false;
   w._pageLoadIdleCbs = [];
+
+  var MAX_TRIES = 3;
+
+  /* ── معايير اكتمال بيانات كل صفحة (قوائم + جداول) ── */
+  var VERIFY = {
+    treatment: [
+      { sel: '#tr_phoneList option',       label: 'قائمة أرقام الهواتف' },
+      { sel: '#tr_diseaseList option',     label: 'قائمة الأمراض' },
+      { sel: '#tr_drugList option',        label: 'قائمة الأدوية' },
+      { sel: '#tr_dataEntryList option',   label: 'قائمة مدخلي البيانات' },
+      { sel: '#tr_dataUpdaterList option', label: 'قائمة معدّلي البيانات' },
+      { sel: '#tr_dataTable tr',           label: 'السجل اليومي' }
+    ],
+    breeder: [
+      { sel: '#bd_phoneList option',       label: 'قائمة أرقام الهواتف' },
+      { sel: '#bd_regionList option',      label: 'قائمة المناطق' },
+      { sel: '#bd_dataEntryList option',   label: 'قائمة مدخلي البيانات' },
+      { sel: '#bd_dataUpdaterList option', label: 'قائمة معدّلي البيانات' }
+    ],
+    vaccination: [
+      { sel: '#vacc_phoneList option',       label: 'قائمة أرقام الهواتف' },
+      { sel: '#vacc_dataEntryList option',   label: 'قائمة مدخلي البيانات' },
+      { sel: '#vacc_dataUpdaterList option', label: 'قائمة معدّلي البيانات' }
+    ],
+    samples: [
+      { sel: '#phoneList option',          label: 'قائمة أرقام الهواتف' },
+      { sel: '#dataEntryList option',      label: 'قائمة مدخلي البيانات' },
+      { sel: '#dataUpdaterList option',    label: 'قائمة معدّلي البيانات' },
+      { sel: '#testList option',           label: 'قائمة الفحوصات' },
+      { sel: '#sampleTypeList option',     label: 'قائمة أنواع العينات' }
+    ],
+    vaccinationRequests: [
+      { sel: '#vr_searchResultsBody tr',   label: 'جدول طلبات التحصين' }
+    ],
+    reports: [
+      { sel: '#dim_searchResultsBody tr',  label: 'جدول الأدوية المصروفة' }
+    ],
+    financialInventory: [
+      { sel: '#fin_searchResultsBody tr',  label: 'جدول المتحصلات' }
+    ],
+    diseaseTracking: [
+      { sel: '#dtr_diseaseSelect option',  min: 2, label: 'قائمة الأمراض' }
+    ],
+    animalDistribution: [
+      { sel: '#ani_searchResultsBody tr',  label: 'جدول توزيع الحيوانات' }
+    ],
+    comprehensiveReport: [
+      { sel: '#rpt_tb1 tr',                label: 'جداول التقرير الشامل' }
+    ]
+  };
+
+  /* ── إعادة تحميل البيانات فقط (بدون إعادة ربط الأحداث) ── */
+  var RELOAD = {
+    treatment: function () {
+      return Promise.all([
+        typeof trloadDropdowns === 'function' ? trloadDropdowns() : null,
+        typeof trloadData      === 'function' ? trloadData()      : null
+      ]);
+    },
+    breeder:     function () { return typeof bd_refreshDropdowns === 'function' ? bd_refreshDropdowns() : null; },
+    vaccination: function () { return typeof vaccLoadDropdowns   === 'function' ? vaccLoadDropdowns()   : null; },
+    samples:     function () {
+      return Promise.all([
+        typeof foloadDropdowns   === 'function' ? foloadDropdowns()   : null,
+        typeof foloadUniqueCount === 'function' ? foloadUniqueCount() : null
+      ]);
+    },
+    vaccinationRequests: function () { return typeof vr_loadData === 'function' ? vr_loadData() : null; },
+    reports:             function () { return typeof dim_loadData === 'function' ? dim_loadData() : null; },
+    financialInventory:  function () { return typeof fin_loadFinancialData === 'function' ? fin_loadFinancialData() : null; },
+    diseaseTracking:     function () {
+      if (typeof dtr_loadDiseaseList !== 'function') return null;
+      return dtr_loadDiseaseList().then(function () {
+        if (typeof dtr_loadData === 'function') return dtr_loadData();
+      });
+    },
+    animalDistribution:  function () { return typeof ani_loadData   === 'function' ? ani_loadData()   : null; },
+    comprehensiveReport: function () { return typeof rpt_loadReport === 'function' ? rpt_loadReport() : null; },
+    doctorPerformance:   function () { return typeof dp_loadAll     === 'function' ? dp_loadAll()     : null; }
+  };
+
+  function verify(pageId) {
+    var rules = VERIFY[pageId];
+    if (!rules) return { ok: true, missing: [] };
+    var missing = [];
+    rules.forEach(function (r) {
+      var n = 0;
+      try { n = document.querySelectorAll(r.sel).length; } catch (e) {}
+      if (n < (r.min || 1)) missing.push(r.label);
+    });
+    return { ok: missing.length === 0, missing: missing };
+  }
+
+  w.verifyPageData = verify;
+  w.reloadPageData = function (pageId) {
+    var fn = RELOAD[pageId];
+    return fn ? Promise.resolve(fn()) : Promise.resolve();
+  };
 
   function toast(msg, type) {
     if (typeof w.showToast === 'function') w.showToast(msg, type);
@@ -1387,40 +1485,70 @@ lockNav();
     cbs.forEach(function (cb) { try { cb(); } catch (e) {} });
   }
 
-  function drain() {
+function drain() {
     if (w._pageLoadBusy) return;
     if (!w._pageLoadQueue.length) { runIdle(); return; }
+    startLoad(w._pageLoadQueue.shift(), 1);
+  }
 
-    var pageId = w._pageLoadQueue.shift();
-    var fn = w._initQueueMap ? w._initQueueMap[pageId] : null;
-    if (typeof fn !== 'function') { setTimeout(drain, 0); return; }
+  function startLoad(pageId, attempt) {
+    /* المحاولة الأولى: دالة التهيئة — المحاولات التالية: إعادة جلب البيانات فقط */
+    var fn = (attempt === 1)
+      ? (w._initQueueMap ? w._initQueueMap[pageId] : null)
+      : RELOAD[pageId];
+
+    if (typeof fn !== 'function') { finishPage(pageId); return; }
 
     w._pageLoadBusy = true;
-    console.log('[QUEUE] ▶ بدء تحميل ' + pageId);
+    overlay(pageId, true);
+    console.log('[QUEUE] ▶ تحميل ' + pageId + ' (محاولة ' + attempt + ')');
 
-    var finish = function () {
-      w._pageLoadBusy = false;
-      overlay(pageId, false);
-      console.log('[QUEUE] ✔ انتهى تحميل ' + pageId);
-      setTimeout(drain, 0);
+    var checkAndContinue = function () {
+      /* مهلة قصيرة حتى يستقر الـ DOM بعد التعبئة */
+      setTimeout(function () {
+        var res = verify(pageId);
+
+        if (res.ok) {
+          console.log('[QUEUE] ✔ اكتملت بيانات ' + pageId);
+          finishPage(pageId);
+          return;
+        }
+
+        console.warn('[QUEUE] ✖ ناقص في ' + pageId + ': ' + res.missing.join('، '));
+
+        if (attempt < MAX_TRIES) {
+          toast('⏳ لم تكتمل ' + res.missing[0] + ' — إعادة المحاولة (' + (attempt + 1) + '/' + MAX_TRIES + ')', 'warning');
+          w._pageLoadBusy = false;
+          setTimeout(function () { startLoad(pageId, attempt + 1); }, 900);
+        } else {
+          toast('⚠️ لم تكتمل بيانات الصفحة: ' + res.missing.join('، ') + ' — تحقق من الاتصال ثم اضغط 🔄 تحديث', 'error');
+          finishPage(pageId);
+        }
+      }, 300);
     };
 
     var result;
     try {
       result = fn();
     } catch (e) {
-      console.warn('[QUEUE] فشل تحميل ' + pageId + ':', e.message);
+      console.warn('[QUEUE] خطأ في تحميل ' + pageId + ':', e.message);
       toast('حدث خطأ أثناء تحميل البيانات: ' + e.message, 'error');
     }
 
     if (result && typeof result.then === 'function') {
-      result.then(finish, function (e) {
+      result.then(checkAndContinue, function (e) {
         console.warn('[QUEUE] فشل تحميل ' + pageId + ':', (e && e.message) || e);
-        finish();
+        checkAndContinue();
       });
     } else {
-      setTimeout(finish, 0);
+      checkAndContinue();
     }
+  }
+
+  function finishPage(pageId) {
+    w._pageLoadBusy = false;
+    overlay(pageId, false);
+    setTimeout(drain, 0);
   }
 
   w.enqueuePageLoad = function (pageId) {
