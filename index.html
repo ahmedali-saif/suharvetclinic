@@ -4092,6 +4092,82 @@ function trCacheLoad() {
   } catch (e) { return null; }
 }
 
+/* ════════════════════════════════════════════
+   كاش بيانات الحالات الكاملة — جلب مسبق
+   ════════════════════════════════════════════ */
+var TR_CASE_KEY  = "tr_cases_cache_v1";
+var TR_CASE_CONC = 3;                       // عدد الطلبات المتزامنة
+window._trCaseMap = window._trCaseMap || {};
+var _trPrefetchBusy = false;
+
+function trCaseCacheLoad() {
+  try {
+    var raw = sessionStorage.getItem(TR_CASE_KEY);
+    if (!raw) return;
+    var o = JSON.parse(raw);
+    if (!o || o.day !== trCacheToday()) { sessionStorage.removeItem(TR_CASE_KEY); return; }
+    window._trCaseMap = o.cases || {};
+  } catch (e) {}
+}
+
+function trCaseCachePersist() {
+  try {
+    sessionStorage.setItem(TR_CASE_KEY,
+      JSON.stringify({ day: trCacheToday(), cases: window._trCaseMap }));
+  } catch (e) {}   // تجاوز الحجم ← تبقى الذاكرة وحدها
+}
+
+function trCaseCacheClear() {
+  window._trCaseMap = {};
+  try { sessionStorage.removeItem(TR_CASE_KEY); } catch (e) {}
+}
+
+function trCaseCacheGet(cn) { return window._trCaseMap[String(cn).trim()] || null; }
+function trCaseCacheSet(cn, data) { window._trCaseMap[String(cn).trim()] = data; }
+
+/** أرقام الحالات الظاهرة في جدول السجل اليومي */
+function trDailyCaseNumbers() {
+  var out = [];
+  document.querySelectorAll("#tr_dataTable tbody tr").forEach(function (row) {
+    var c = row.cells[0];
+    if (!c) return;
+    var v = (c.textContent || "").trim();
+    if (v) out.push(v);
+  });
+  return out;
+}
+
+/** جلب مسبق صامت لبيانات كل حالات السجل اليومي */
+async function trPrefetchCases() {
+  if (_trPrefetchBusy) return;
+  _trPrefetchBusy = true;
+  try {
+    var pending = trDailyCaseNumbers().filter(function (cn) { return !trCaseCacheGet(cn); });
+    if (!pending.length) return;
+
+    var i = 0;
+    async function worker() {
+      while (i < pending.length) {
+        var cn = pending[i++];
+        try {
+          var res = await trcallApi("trsearchCaseData", { caseNumber: cn });
+          if (res && res.success) trCaseCacheSet(cn, res);
+        } catch (e) {}
+      }
+    }
+    var workers = [];
+    for (var w = 0; w < TR_CASE_CONC; w++) workers.push(worker());
+    await Promise.all(workers);
+
+    trCaseCachePersist();
+    console.log("[TR] جاهز في الذاكرة: " + Object.keys(window._trCaseMap).length + " حالة");
+  } finally {
+    _trPrefetchBusy = false;
+  }
+}
+
+trCaseCacheLoad();
+
 /** رسم جدول السجل اليومي من مصفوفة البيانات */
 function trRenderDailyTable(rows) {
   const tbl = document.getElementById("tr_dataTable");
@@ -4109,9 +4185,14 @@ function trRenderDailyTable(rows) {
     rows[i].forEach(c => { html += "<td>" + (c === "" ? " " : c) + "</td>"; });
     html += "</tr>";
   }
-  html += "</tbody>";
+html += "</tbody>";
   tbl.innerHTML = html;
+
+  // تجهيز بيانات كل الحالات في الخلفية
+  if (typeof trPrefetchCases === "function") setTimeout(trPrefetchCases, 600);
 }
+
+/** تحميل جدول البيانات اليومية — من الكاش أولاً ثم من الخادم */
 
 /** تحميل جدول البيانات اليومية — من الكاش أولاً ثم من الخادم */
 async function trloadData(force, silent) {
@@ -4357,17 +4438,28 @@ function trbindEvents() {
     const cn = cell.textContent.trim();
     if (!cn) return;
 
-    trblockButtons();
-    trclearFormExcept(null);
+trclearFormExcept(null);
     document.getElementById("tr_caseNumber").value = cn;
     trupdateMirrorCaseNumber();
+
+    // ① الحالة جاهزة في الذاكرة ← تعبئة فورية
+    const hit = trCaseCacheGet(cn);
+    if (hit) {
+      trfillFormWithData(hit);
+      trshowMessage("⚡ تم التحميل فوراً", false);
+      return;
+    }
+
+    // ② غير جاهزة ← جلب من الخادم وتخزينها
+    trblockButtons();
     trshowMessage("⏳ جاري الجلب...", false);
 
     try {
       const res = await trcallApi("trsearchCaseData", { caseNumber: cn });
       if (res.success) {
+        trCaseCacheSet(cn, res);
+        trCaseCachePersist();
         trfillFormWithData(res);
-        trloadData();
         trshowMessage("✅ تم التحميل", false);
       } else {
         trshowMessage(res.message, true);
@@ -4581,7 +4673,15 @@ function trinit() {
     var _orig = window.trcallApi;
     window.trcallApi = async function (action, payload) {
       var res = await _orig.apply(this, arguments);
-      if (res && res.success && TR_WRITE_OPS.indexOf(action) !== -1) trCacheClear();
+     if (res && res.success && TR_WRITE_OPS.indexOf(action) !== -1) {
+        trCacheClear();
+        var _cn = (payload && payload.data && payload.data.caseNumber) ||
+                  (payload && payload.caseNumber) || "";
+        if (_cn) {
+          delete window._trCaseMap[String(_cn).trim()];
+          trCaseCachePersist();
+        }
+      }
       return res;
     };
     window.trcallApi._trCachePatch = true;
