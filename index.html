@@ -11772,15 +11772,17 @@ function refreshAndRepatch() {
       if (!dl) return;
 
       /* الطريقة الوحيدة الموثوقة: افصل الـ datalist عن الـ input ثم أعده */
-      var inp = inputId ? document.getElementById(inputId) : null;
+  var inp = inputId ? document.getElementById(inputId) : null;
       if (inp) inp.removeAttribute("list");
 
-      dl.innerHTML = "";
+      var frag = document.createDocumentFragment();
       items.forEach(function (v) {
         var o = document.createElement("option");
         o.value = v;
-        dl.appendChild(o);
+        frag.appendChild(o);
       });
+      dl.innerHTML = "";
+      dl.appendChild(frag);
 
       /* أعد الربط في الـ tick التالي حتى يلتقطه المتصفح */
       if (inp) {
