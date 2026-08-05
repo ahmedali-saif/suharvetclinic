@@ -4063,44 +4063,93 @@ async function trtempUpdate() {
 //  تحميل الجداول والقوائم (Data Loading)
 // ============================================================
 
-/** تحميل جدول البيانات اليومية */
-async function trloadData() {
-  trblockButtons();
+/* ════════════════════════════════════════════
+   كاش السجل اليومي — تخزين مؤقت داخل المتصفح
+   ════════════════════════════════════════════ */
+var TR_CACHE_KEY = "tr_daily_cache_v1";
+var TR_CACHE_TTL = 5 * 60 * 1000;   // صلاحية الكاش: 5 دقائق
+
+function trCacheToday() { return new Date().toLocaleDateString("en-CA"); }
+
+function trCacheSave(rows) {
+  try {
+    sessionStorage.setItem(TR_CACHE_KEY, JSON.stringify({
+      ts: Date.now(), day: trCacheToday(), data: rows
+    }));
+  } catch (e) {}
+}
+
+function trCacheClear() { try { sessionStorage.removeItem(TR_CACHE_KEY); } catch (e) {} }
+
+function trCacheLoad() {
+  try {
+    var raw = sessionStorage.getItem(TR_CACHE_KEY);
+    if (!raw) return null;
+    var o = JSON.parse(raw);
+    if (!o || !o.data || o.data.length <= 1) return null;
+    if (o.day !== trCacheToday()) { trCacheClear(); return null; }  // يوم جديد ← كاش منتهٍ
+    return o;
+  } catch (e) { return null; }
+}
+
+/** رسم جدول السجل اليومي من مصفوفة البيانات */
+function trRenderDailyTable(rows) {
+  const tbl = document.getElementById("tr_dataTable");
+  if (!tbl) return;
+
+  let html = "<thead><tr>";
+  rows[0].forEach(c => { html += "<th>" + (c || "") + "</th>"; });
+  html += "</tr></thead><tbody>";
+
+  for (let i = 1; i < rows.length; i++) {
+    const isIncomplete = (rows[i][6] + "").indexOf("غير مكتملة") > -1;
+    html += isIncomplete
+      ? '<tr class="data-missing">'
+      : '<tr style="background-color:#00ff00;">';
+    rows[i].forEach(c => { html += "<td>" + (c === "" ? " " : c) + "</td>"; });
+    html += "</tr>";
+  }
+  html += "</tbody>";
+  tbl.innerHTML = html;
+}
+
+/** تحميل جدول البيانات اليومية — من الكاش أولاً ثم من الخادم */
+async function trloadData(force, silent) {
+  // ① عرض فوري من الكاش
+  if (!force) {
+    var cached = trCacheLoad();
+    if (cached) {
+      trRenderDailyTable(cached.data);
+      if (typeof trloadIncompleteCount === "function") trloadIncompleteCount();
+      // تحديث صامت في الخلفية إذا تجاوز الكاش مدة الصلاحية
+      if (Date.now() - cached.ts > TR_CACHE_TTL) {
+        setTimeout(function () { window.trloadData(true, true); }, 50);
+      }
+      return;
+    }
+  }
+
+  // ② جلب من الخادم
+  if (!silent) trblockButtons();
   try {
     const res = await trcallApi("trgetAAAData");
     const tbl = document.getElementById("tr_dataTable");
-    tbl.innerHTML = "";
 
     if (!res.success || !res.data || res.data.length <= 1) {
-      tbl.innerHTML = "<tr><td colspan='7'>لا توجد بيانات لليوم</td></tr>";
+      trCacheClear();
+      if (tbl) tbl.innerHTML = "<tr><td colspan='7'>لا توجد بيانات لليوم</td></tr>";
       return;
     }
 
-    // رأس الجدول
-    let html = "<thead><tr>";
-    res.data[0].forEach(c => { html += "<th>" + (c || "") + "</th>"; });
-    html += "</tr></thead>";
-
-    // صفوف البيانات
-    html += "<tbody>";
-    for (let i = 1; i < res.data.length; i++) {
-      const isIncomplete = (res.data[i][6] + "").indexOf("غير مكتملة") > -1;
-      html += isIncomplete
-        ? '<tr class="data-missing">'
-        : '<tr style="background-color:#00ff00;">';
-      res.data[i].forEach(c => { html += "<td>" + (c === "" ? " " : c) + "</td>"; });
-      html += "</tr>";
-    }
-    html += "</tbody>";
-    tbl.innerHTML = html;
+    trCacheSave(res.data);
+    trRenderDailyTable(res.data);
   } catch (err) {
-    trshowMessage("خطأ في تحميل الجدول: " + err.message, true);
+    if (!silent) trshowMessage("خطأ في تحميل الجدول: " + err.message, true);
   } finally {
-    trunblockButtons();
+    if (!silent) trunblockButtons();
     if (typeof trloadIncompleteCount === "function") trloadIncompleteCount();
   }
 }
-
 /** تحميل القوائم المنسدلة (هواتف، أمراض، أدوية، مدخلو البيانات) */
 async function trloadDropdowns() {
   trblockButtons();
@@ -4519,6 +4568,27 @@ function trinit() {
     .catch(err => trshowMessage("خطأ في التحميل: " + err.message, true))
     .finally(() => { if (overlay) overlay.style.display = "none"; });
 }
+// ============================================================
+//  إبطال كاش السجل اليومي بعد أي عملية كتابة ناجحة
+// ============================================================
+(function () {
+  "use strict";
+  var TR_WRITE_OPS = ["trsaveData", "trupdateData", "trdeleteData",
+                      "trsaveTempData", "trupdateTempData"];
+  function trPatchCacheInvalidation() {
+    if (!window.trcallApi) { setTimeout(trPatchCacheInvalidation, 400); return; }
+    if (window.trcallApi._trCachePatch) return;
+    var _orig = window.trcallApi;
+    window.trcallApi = async function (action, payload) {
+      var res = await _orig.apply(this, arguments);
+      if (res && res.success && TR_WRITE_OPS.indexOf(action) !== -1) trCacheClear();
+      return res;
+    };
+    window.trcallApi._trCachePatch = true;
+  }
+  trPatchCacheInvalidation();
+})();
+
 function trCloseIncompleteModal() {
   const overlay = document.getElementById("incompleteOverlay");
   overlay.classList.remove("show");
@@ -10900,7 +10970,7 @@ async function remoteSyncPoll() {
 function remoteSyncApply(topic, action) {
   var handlers = {
     "treatment": function() {
-      if (typeof trloadData === "function") trloadData();
+      if (typeof trloadData === "function") trloadData(true);
       if (typeof trloadIncompleteCount === "function") trloadIncompleteCount();
     },
     "breeder": function() {
