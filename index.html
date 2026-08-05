@@ -1418,11 +1418,11 @@ w._pageLoadQueue   = [];
 
   /* ── إعادة تحميل البيانات فقط (بدون إعادة ربط الأحداث) ── */
   var RELOAD = {
-    treatment: function () {
-      return Promise.all([
-        typeof trloadDropdowns === 'function' ? trloadDropdowns() : null,
-        typeof trloadData      === 'function' ? trloadData()      : null
-      ]);
+ treatment: function () {
+      if (typeof trloadDropdowns !== 'function') return null;
+      return trloadDropdowns().then(function () {
+        if (typeof trloadData === 'function') return trloadData();
+      });
     },
     breeder:     function () { return typeof bd_refreshDropdowns === 'function' ? bd_refreshDropdowns() : null; },
     vaccination: function () { return typeof vaccLoadDropdowns   === 'function' ? vaccLoadDropdowns()   : null; },
@@ -4240,12 +4240,23 @@ async function trloadData(force, silent) {
 async function trloadDropdowns() {
   trblockButtons();
   try {
-    const [phonesRes, diseasesRes, drugsRes, dataEntryRes] = await Promise.all([
-      trcallApi("trgetPhoneNumbers"),
-      trcallApi("trgetDiseases"),
-      trcallApi("trgetDrugs"),
-      trcallApi("trgetDataEntryOptions"),
-    ]);
+    /* طلب واحد في كل مرة — Apps Script ينفّذ طلبات المستخدم بالتتابع،
+       و Promise.all كان يُسقط جميع القوائم عند فشل طلب واحد فقط */
+    const one = async function (action) {
+      for (var i = 0; i < 2; i++) {
+        try {
+          var r = await trcallApi(action);
+          if (r && r.success) return r;
+        } catch (e) {}
+        await new Promise(function (rs) { setTimeout(rs, 400); });
+      }
+      return { success: false, data: [] };
+    };
+
+    const phonesRes    = await one("trgetPhoneNumbers");
+    const diseasesRes  = await one("trgetDiseases");
+    const drugsRes     = await one("trgetDrugs");
+    const dataEntryRes = await one("trgetDataEntryOptions");
 
     const fillDL = (id, data) => {
       const dl = document.getElementById(id);
@@ -4661,7 +4672,7 @@ function trinit() {
   const overlay = document.getElementById("tr_loadingOverlay");
   if (overlay) overlay.style.display = "flex";
 
-  return Promise.all([trloadDropdowns(), trloadData()])
+return trloadDropdowns().then(function () { return trloadData(); })
     .catch(err => trshowMessage("خطأ في التحميل: " + err.message, true))
     .finally(() => { if (overlay) overlay.style.display = "none"; });
 }
