@@ -12208,21 +12208,28 @@ function showDesignerInfoModal() {
     setTimeout(function () {
       saveOriginals();
 
-      var savedEnabled = localStorage.getItem(CACHE_ENABLED_KEY) === "true";
+var savedEnabled = localStorage.getItem(CACHE_ENABLED_KEY) === "true";
       var inp = document.getElementById("cache-toggle");
 
       if (savedEnabled) {
         if (inp) inp.checked = true;
-        var ok = loadFromStorage();
-        if (ok) {
-          state.enabled = true;
-          patchAppFunctions();
-          updateUI("ready");
-          refreshAllPhoneDataLists();
-          console.log("[Cache] ✅ استُعيد من localStorage (" + state.totalRows + " مربي)");
-        } else {
-          enableCache(true);
-        }
+        updateUI("idle");
+        /* الاستعادة الثقيلة تُؤجَّل حتى بعد تسجيل الدخول حتى لا تُجمّد الإقلاع */
+        (function waitLogin() {
+          if (!global._isLoggedIn) { setTimeout(waitLogin, 400); return; }
+          setTimeout(function () {
+            var ok = loadFromStorage();
+            if (ok) {
+              state.enabled = true;
+              patchAppFunctions();
+              updateUI("ready");
+              refreshAllPhoneDataLists();
+              console.log("[Cache] ✅ استُعيد من localStorage (" + state.totalRows + " مربي)");
+            } else {
+              enableCache(true);
+            }
+          }, 800);
+        })();
       } else {
         updateUI("idle");
       }
